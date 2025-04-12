@@ -1,0 +1,37 @@
+# === Java & Maven ===
+/target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# === Eclipse ===
+.project
+.classpath
+.settings/
+
+# === IDEs ===
+*.iml
+.idea/
+*.iws
+*.ipr
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+
+# === Build Tools ===
+/bin/
+/out/
+/build/
+
+# === Test Reports ===
+/surefire-reports/
+/jacoco.exec
+
+# === VS Code (if you ever use it) ===
+.vscode/
+
+# === Git ===
+.git/
