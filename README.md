@@ -4,7 +4,7 @@ This project aims at a java implementation of [RFC 3987 Internationalized Resour
 
 ⚠️ This project is a work in progress. Its API and internal structure may evolve in future versions.
 
-📚 [View the Javadoc](https://jfbaget.gitlabpages.inria.fr/nanoparse/)
+📚 [View the Javadoc](https://jfbaget.gitlabpages.inria.fr/irirefs/)
 
 ---
 
