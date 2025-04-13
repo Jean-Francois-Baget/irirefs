@@ -6,4 +6,4 @@ pages:
     paths:
       - public
   only:
-    - main  # Or 'master', depending on your default branch
+    - main  
