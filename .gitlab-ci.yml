@@ -6,6 +6,6 @@ pages:
     paths:
       - public
   only:
-    - main  
+    - main
   tags:
 	- ci.inria.fr
