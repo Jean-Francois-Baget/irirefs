@@ -32,6 +32,13 @@ public class IRIRef {
 	private boolean isFreezed = false;
 	private String recomposedString = null;
 	
+	/**
+	 * String returned by relativize when relativization has failed. 
+	 * </p>
+	 * Value chosen because it is not an IRIRef
+	 */
+	public static final String RELATIVIZE_ERROR = ":";
+	
 	
 	public static  enum IRITYPE {
 		ANY(IRIParser.IRIREF), 

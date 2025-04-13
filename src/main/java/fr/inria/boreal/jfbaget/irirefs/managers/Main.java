@@ -1,6 +1,5 @@
 package fr.inria.boreal.jfbaget.irirefs.managers;
 
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import fr.inria.boreal.jfbaget.irirefs.IRIRef;
@@ -9,6 +8,7 @@ public class Main extends AbstractIRIManager{
 	
 	private static Pattern simple = Pattern.compile("([a-z][a-zA-Z0-9]*)?");
 	
+	@Override
 	protected IRIRef normalize(IRIRef iri) {
 		return iri;
 	}
@@ -25,7 +25,24 @@ public class Main extends AbstractIRIManager{
         }
         return result.toString();
     }
-
+    
+    @Override
+    public String displayIRI(IRIRef iriref) {
+    	String str = iriref.recompose();
+    	if (simple.matcher(str).matches())
+            return str;
+        else 
+            return "<" + str + ">";
+    }
+    
+    @Override
+    public String displayPrefixedIRI(PrefixedIRI prefixedIRI) {
+    	String str = prefixedIRI.iri().recompose();
+    	if (simple.matcher(str).matches())
+            return prefixedIRI.prefix() + ":" + str;
+        else 
+            return prefixedIRI.prefix() + ":<" + str + ">";
+    }
 	
 
     public static void main(String[] args) {

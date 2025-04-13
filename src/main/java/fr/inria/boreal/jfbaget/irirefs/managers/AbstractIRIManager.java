@@ -410,7 +410,35 @@ public abstract class AbstractIRIManager implements IManager{
     
     
     
+    private IRIRef relativize(IRIRef iriref) {
+    	return iriref.relativize(this.base);
+    }
     
+    private IRIRef relativize(IRIRef iriref, String key) {
+    	return iriref.relativize(this.getPrefixedIRIRef(key));
+    }
+    
+    public String display(IRIRef iriref) {
+    	if (iriref.isRelative()) {
+    		throw new IllegalArgumentException("Cannot display a relative IRI, given \"" + iriref.recompose() + "\"");
+    	}
+    	String candidate = this.displayIRI(iriref);
+    	String test = this.display(this.relativize(iriref));
+    	if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
+    		candidate = test;
+    	}
+    	for (String key : this.getAllPrefixes()) {
+    		test = this.displayPrefixedIRI(new PrefixedIRI(key, this.relativize(iriref, key)));
+    		if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
+        		candidate = test;
+        	}
+    	}
+    	return candidate;
+    }
+    
+    public abstract String displayIRI(IRIRef iriref);
+    
+    public abstract String displayPrefixedIRI(PrefixedIRI prefixedIRI);
     
 
     /**
