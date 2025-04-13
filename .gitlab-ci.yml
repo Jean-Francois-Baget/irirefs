@@ -7,3 +7,5 @@ pages:
       - public
   only:
     - main  
+  tags:
+	- ci.inria.fr
