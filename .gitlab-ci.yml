@@ -1,0 +1,9 @@
+pages:
+  stage: deploy
+  script:
+    - echo "Deploying Javadoc to GitLab Pages..."
+  artifacts:
+    paths:
+      - public
+  only:
+    - main  # Or 'master', depending on your default branch
