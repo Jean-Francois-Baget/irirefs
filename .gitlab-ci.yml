@@ -1,9 +1,7 @@
 pages:
   stage: deploy
   script:
-    - echo "Generating Javadoc..."
-    - mkdir -p public
-    - javadoc -d public -sourcepath src -subpackages fr.inria.boreal.jfbaget.irirefs
+    - echo "Using pre-generated Javadoc"
   artifacts:
     paths:
       - public
