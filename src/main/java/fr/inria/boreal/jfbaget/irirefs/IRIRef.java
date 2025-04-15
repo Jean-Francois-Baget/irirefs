@@ -65,6 +65,47 @@ public class IRIRef {
 	    }
 	};
 	
+	public static enum NORMALIZATION {
+		/**
+		 * <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.1">RFC 3987, Simple String Comparison</a>
+		 */
+		STRING,
+		/**
+		 * <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.2">RFC 3987, Syntax-Based Normalization</a>
+		 * <p>
+		 * Regroups {@link #CASE}, {@link #CHARACTER}, {@link #PCT}
+		 * <p>
+		 * Though technically in Syntax-based Normalization, Path Segment Normalization {@link #PATH} 
+		 * will not be called by {@link #SYNTAX}, since it should have already been done by a call to {@link IRIRef#resolve(IRIRef)}.
+		 * Path Segment Normalization should then be called explicitely if required.
+		 */
+		SYNTAX, 
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.2.1">RFC 3987, Case Normalization</a>
+		 */
+		CASE,
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.2.2">RFC 3987, Character Normalization</a>
+		 */
+		CHARACTER,
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.2.3">RFC 3987, Percent-Encoding Normalization</a>
+		 */
+		PCT,
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.2.4">RFC 3987, Path Segment Normalization</a>
+		 */
+		PATH,
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.3">RFC 3987, Scheme-Based Normalization</a>
+		 */
+		SCHEME,
+		/**
+		 *  <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.4">RFC 3987, Protocol-Based Normalization</a>
+		 */
+		PROTOCOL
+	}
+	
 	private static final IRIParser parser = new IRIParser();
 	
 
@@ -362,6 +403,14 @@ public class IRIRef {
 		builder.append("\u001B[0m");
 	}
 	
+	@Override
+	public boolean equals(Object other) {
+	    if (this == other) return true;
+	    if (other instanceof String s) return recompose().equals(s);
+	    if (other instanceof IRIRef iri) return recompose().equals(iri.recompose());
+	    return false;
+	}
+	
 	/**
 	 * Returns the standard string representation of this IRIRef, as defined
 	 * by <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC 3987</a>.
@@ -483,6 +532,7 @@ public class IRIRef {
 			result.scheme = null;
 			if (Objects.equals(result.authority, base.authority)) {
 				result.authority = null;
+				// Iterating through segments of the two paths until they differ
 				ListIterator<String> baseIt = base.path.listIterator();
 				ListIterator<String> resultIt = result.path.listIterator();
 				boolean same = true;
@@ -494,9 +544,15 @@ public class IRIRef {
 					if (!currentBase.equals(currentResult)) {
 						same = false;
 					}
+					else {
+						resultIt.remove();
+					}
 				}
+				// Now either one of the two iterators have no next, or the two strings
+				// are different.
 				if (same && !baseIt.hasNext() && !resultIt.hasNext()) {
-					result.path.clear();
+					System.out.println("they are the same");
+					//result.path.clear();
 					if (Objects.equals(result.query, base.query)) {
 						result.query = null;
 					}
@@ -510,17 +566,19 @@ public class IRIRef {
 	}
 	
 	
-	public IRIRef normalize() {
-		return  new IRIRef(this).normalizeInPlace();
+	public IRIRef normalize(NORMALIZATION norm) {
+		return  new IRIRef(this).normalizeInPlace(norm);
 	}
 	
 	
 	
 	
-	public IRIRef normalizeInPlace() {
+	public IRIRef normalizeInPlace(NORMALIZATION norm) {
 		return this;
 	}
-
+	
+	
+	
 	
 	
 	

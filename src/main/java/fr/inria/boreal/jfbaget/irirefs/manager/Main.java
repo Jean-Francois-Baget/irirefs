@@ -1,63 +1,72 @@
-package fr.inria.boreal.jfbaget.irirefs.managers;
+package fr.inria.boreal.jfbaget.irirefs.manager;
 
-import java.util.regex.Pattern;
+
+import java.util.List;
 
 import fr.inria.boreal.jfbaget.irirefs.IRIRef;
+import fr.inria.boreal.jfbaget.irirefs.IRIRef.IRITYPE;
+import fr.inria.boreal.jfbaget.irirefs.manager.IRIManager.PrefixedIRI;
 
-public class Main extends AbstractIRIManager{
+public class Main {
 	
-	private static Pattern simple = Pattern.compile("([a-z][a-zA-Z0-9]*)?");
 	
-	@Override
-	protected IRIRef normalize(IRIRef iri) {
-		return iri;
-	}
 	
 	 /**
      * Returns a DLGP representation of the environment.
      * @return
      */
-    public String toDLGP() {
+    public static String toDLGP(IRIManager env) {
         StringBuilder result = new StringBuilder();
-        result.append("@base <" + this.getBase() + ">" + System.lineSeparator());
-        for (String prefix : this.getAllPrefixes()) {
-            result.append("@prefix " + prefix + ": <" + this.getPrefixed(prefix) + ">" + System.lineSeparator());
+        result.append("@base <" + env.getBase() + ">" + System.lineSeparator());
+        for (String prefix : env.getAllPrefixes()) {
+            result.append("@prefix " + prefix + ": <" + env.getPrefixed(prefix) + ">" + System.lineSeparator());
         }
         return result.toString();
     }
     
-    @Override
-    public String displayIRI(IRIRef iriref) {
-    	String str = iriref.recompose();
-    	if (simple.matcher(str).matches())
-            return str;
-        else 
-            return "<" + str + ">";
+    public static void testRelativisation(String tested, String base) {
+    	System.out.println("===========================================");
+    	IRIRef baseIRI = new IRIRef(base, IRITYPE.ABS).resolve(); 
+    	IRIRef testedIRI = new IRIRef(tested, IRITYPE.IRI).resolve();
+    	IRIRef relativizedIRI = testedIRI.relativize(baseIRI);
+    	IRIRef resolvedIRI = relativizedIRI.resolve(baseIRI);
+    	System.out.println("Base:        <" + baseIRI + ">");
+    	System.out.println("Tested:      <" + testedIRI + ">");
+    	System.out.println("Relativized: <" + relativizedIRI + ">");
+    	System.out.println("Resolved:    <" + resolvedIRI + ">");
+    	System.out.println("Correct?      " + resolvedIRI.equals(testedIRI));
+    	System.out.println("===========================================");
     }
     
-    @Override
-    public String displayPrefixedIRI(PrefixedIRI prefixedIRI) {
-    	String str = prefixedIRI.iri().recompose();
-    	if (simple.matcher(str).matches())
-            return prefixedIRI.prefix() + ":" + str;
-        else 
-            return prefixedIRI.prefix() + ":<" + str + ">";
-    }
+ 
 	
 
     public static void main(String[] args) {
-
-      Main env = new Main();
+    	// TESTED, BASE
+    	List<List<String>> tests = List.of(
+    		List.of("http://www.lirmm.fr?q#f", "http://www.lirmm.fr?q")	
+    	);
+    			
+    	
+    	for (List<String> test : tests) {
+    		testRelativisation(test.get(0), test.get(1));
+    	}
+    	
+    	
+    	
+      /*	
+      IRIManager env = new IRIManager();
       
       env.setBase("foo/");
       env.setPrefixed("p1", "http://www.lirmm.fr/");
       env.setPrefixed("p2", "foo");
       env.setPrefixed("p3", new PrefixedIRI("p1", "bar/?x=3"));
-      String envstr = env.toDLGP();
+      String envstr = toDLGP(env);
       System.out.println(envstr);
       
       String iri = env.createIRI(new PrefixedIRI("p3", "a/./b/../foo#bar"));
       System.out.println(iri);
+      */
         
 
         /* 

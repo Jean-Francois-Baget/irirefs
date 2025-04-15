@@ -1,11 +1,11 @@
-package fr.inria.boreal.jfbaget.irirefs.managers;
+package fr.inria.boreal.jfbaget.irirefs.manager;
 
 import java.util.NoSuchElementException;
 import java.util.Set;
 
 import fr.inria.boreal.jfbaget.irirefs.IRIRef;
 import fr.inria.boreal.jfbaget.irirefs.exceptions.IRIParseException;
-import fr.inria.boreal.jfbaget.irirefs.managers.AbstractIRIManager.PrefixedIRI;
+import fr.inria.boreal.jfbaget.irirefs.manager.IRIManager.PrefixedIRI;
 
 public interface IManager {
 	/**

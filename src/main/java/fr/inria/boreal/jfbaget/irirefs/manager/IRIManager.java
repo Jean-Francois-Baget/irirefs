@@ -1,4 +1,4 @@
-package fr.inria.boreal.jfbaget.irirefs.managers;
+package fr.inria.boreal.jfbaget.irirefs.manager;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -10,11 +10,15 @@ import java.util.Set;
 import fr.inria.boreal.jfbaget.irirefs.IRIRef;
 import fr.inria.boreal.jfbaget.irirefs.IRIRef.IRITYPE;
 import fr.inria.boreal.jfbaget.irirefs.exceptions.IRIParseException;
+import fr.inria.boreal.jfbaget.irirefs.manager.formatter.DLGPFormatter;
+import fr.inria.boreal.jfbaget.irirefs.manager.formatter.IFormatter;
+import fr.inria.boreal.jfbaget.irirefs.manager.normalizer.BasicNormalizer;
+import fr.inria.boreal.jfbaget.irirefs.manager.normalizer.INormalizer;
 
 /**
  * An IRIManager
  */
-public abstract class AbstractIRIManager implements IManager{
+public class IRIManager implements IManager{
 	
 	/**
 	 * Represents a prefix-IRI pair used for resolution or registration.
@@ -28,9 +32,9 @@ public abstract class AbstractIRIManager implements IManager{
 	 * @param iri the relative or absolute {@link IRIRef} to resolve against the prefix base
 	 *
 	 * @see IRIRef
-	 * @see AbstractIRIManager#createIRI(PrefixedIRI)
+	 * @see IRIManager#createIRI(PrefixedIRI)
 	 */
-	protected static record PrefixedIRI(String prefix, IRIRef iri) {
+	public static record PrefixedIRI(String prefix, IRIRef iri) {
 		
 		/**
 	     * Constructs a {@code PrefixedIRI} from a string representation of the IRIRef.
@@ -57,7 +61,7 @@ public abstract class AbstractIRIManager implements IManager{
 	 * This must always be a valid absolute IRI, as per
 	 * <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.1">RFC 3986, Section 5.1</a>.
 	 * </p>
-	 * @see {@link #AbstractIRIManager()} 
+	 * @see {@link #IRIManager()} 
 	 * Need to modify the javadoc there if {@link #DEFAULT_BASE} is modified.
 	 */
     private static final String DEFAULT_BASE = "http://www.boreal.inria.fr/";
@@ -78,10 +82,14 @@ public abstract class AbstractIRIManager implements IManager{
      * </p>
      */
     private HashMap<String, IRIRef> prefixes;
+    
+    
+    private INormalizer normalizer;
+    private IFormatter formatter;
 
 
     /**
-     * Constructs a new {@code AbstractIRIManager} with the given base IRI.
+     * Constructs a new {@code IRIManager} with the given base IRI.
      * <p>
      * The provided IRI string is parsed as an {@link IRIRef} using the {@link IRITYPE#ABS} rule,
      * then resolved and normalized based on the manager’s normalization policy.
@@ -99,24 +107,26 @@ public abstract class AbstractIRIManager implements IManager{
      * @see IRIRef
      * @see IRITYPE#ABS
      */
-    public AbstractIRIManager(String iriString) throws IRIParseException{
-        this.base = this.normalize(new IRIRef(iriString, IRITYPE.ABS).resolve());
+    public IRIManager(String iriString) throws IRIParseException{
+    	this.normalizer = new BasicNormalizer();
+    	this.formatter = new DLGPFormatter();
+        this.base = this.normalizer.normalize(new IRIRef(iriString, IRITYPE.ABS).resolve());
         this.prefixes = new HashMap<>();
     }
 
     /**
-     * Constructs a new {@code AbstractIRIManager} using a default base IRI.
+     * Constructs a new {@code IRIManager} using a default base IRI.
      * <p>
      * The default base IRI is:
      * {@code "http://www.boreal.inria.fr/"}.
      * </p>
-     * This is equivalent to {@code new AbstractIRIManager("http://www.integraal.fr/")}.
+     * This is equivalent to {@code new IRIManager("http://www.integraal.fr/")}.
      *
      * @throws IRIParseException if the default base IRI is not a valid absolute IRI
      *
-     * @see #AbstractIRIManager(String)
+     * @see #IRIManager(String)
      */
-    public AbstractIRIManager() throws IRIParseException{
+    public IRIManager() throws IRIParseException{
         this(DEFAULT_BASE);
     }
     
@@ -143,7 +153,7 @@ public abstract class AbstractIRIManager implements IManager{
     *
     * @see IRIRef#resolve()
     */
-    protected abstract IRIRef normalize(IRIRef iri);
+    //protected abstract IRIRef normalize(IRIRef iri);
     
 
     /**
@@ -368,7 +378,7 @@ public abstract class AbstractIRIManager implements IManager{
      * @return the resulting normalized, resolved IRIRef
      */
     private IRIRef createIRIRef(IRIRef iriref) {
-    	return this.normalize(iriref.resolve(this.base));
+    	return this.normalizer.normalize(iriref.resolve(this.base));
     }
     
     /**
@@ -405,7 +415,7 @@ public abstract class AbstractIRIManager implements IManager{
      * @throws NoSuchElementException if the prefix is not declared
      */
     private IRIRef createIRIRef(PrefixedIRI prefixedIRI) throws NoSuchElementException {
-        return this.normalize(prefixedIRI.iri.resolve(this.getPrefixedIRIRef(prefixedIRI.prefix))); 
+        return this.normalizer.normalize(prefixedIRI.iri.resolve(this.getPrefixedIRIRef(prefixedIRI.prefix))); 
     }
     
     
@@ -418,17 +428,18 @@ public abstract class AbstractIRIManager implements IManager{
     	return iriref.relativize(this.getPrefixedIRIRef(key));
     }
     
+    // other names: shortForm, abbreviate
     public String display(IRIRef iriref) {
     	if (iriref.isRelative()) {
     		throw new IllegalArgumentException("Cannot display a relative IRI, given \"" + iriref.recompose() + "\"");
     	}
-    	String candidate = this.displayIRI(iriref);
-    	String test = this.display(this.relativize(iriref));
+    	String candidate = this.formatter.format(iriref);
+    	String test = this.formatter.format(this.relativize(iriref));
     	if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
     		candidate = test;
     	}
     	for (String key : this.getAllPrefixes()) {
-    		test = this.displayPrefixedIRI(new PrefixedIRI(key, this.relativize(iriref, key)));
+    		test = this.formatter.format(new PrefixedIRI(key, this.relativize(iriref, key)));
     		if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
         		candidate = test;
         	}
@@ -436,59 +447,10 @@ public abstract class AbstractIRIManager implements IManager{
     	return candidate;
     }
     
-    public abstract String displayIRI(IRIRef iriref);
+    //public abstract String displayIRI(IRIRef iriref);
     
-    public abstract String displayPrefixedIRI(PrefixedIRI prefixedIRI);
+    //public abstract String displayPrefixedIRI(PrefixedIRI prefixedIRI);
     
 
-    /**
-     * Returns the shortest possible DLGP representation of an IRI according to the environment.
-     * @param iri a string representing an IRI (not a relative)
-     * @return the shortest possible DLGP representation of iri according to the environment.
-     * @throws IRIException when iri is neither a relative or an IRI
-     * @throws IllegalArgumentException when iri is a relative
-     */
-    public String toDLGP(String iri) throws IRIParseException, IllegalArgumentException {
-    	/*
-        IRIx irix = IRIx.create(iri);
-        if (irix.isRelative()) {
-            throw new IllegalArgumentException("Only IRIs can be written in DLGP, and \"" + iri + "\" is a relative.");
-        }
-        String candidate;
-        if (simple.matcher(iri).matches()) 
-            candidate = iri;
-        else
-            candidate = "<" + iri + ">"; 
-        String test = relativize(irix, this.base);
-        if (!test.equals(":") && test.length() < candidate.length()) {
-            candidate = test;
-        } 
-        for (Map.Entry<String, IRIx> entry : this.prefixes.entrySet()) {
-            test = relativize(irix, entry.getValue());
-            if (!test.equals(":") && entry.getKey().length() + test.length() <= candidate.length()) {
-                candidate = entry.getKey() + ":" + test;
-            } 
-        }
-        return candidate;
-        */
-    	return "Not done";
-    }
-
-
-    private static String relativize(IRIRef value, IRIRef base) {
-    	/*
-        IRIx testx = base.relativize(value);
-        if (testx != null) {
-            String test = testx.str();
-            if (simple.matcher(test).matches())
-                return test;
-            else 
-                return "<" + test + ">";
-        }
-        else
-            return ":"; // This cannot be an IRI, nor a relative
-        */
-    	return "Not done";
-    }
-
+   
 }
