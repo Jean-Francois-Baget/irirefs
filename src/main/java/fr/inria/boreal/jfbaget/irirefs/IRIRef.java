@@ -411,6 +411,11 @@ public class IRIRef {
 	    return false;
 	}
 	
+	@Override
+	public int hashCode() {
+		return this.recompose().hashCode();
+	}
+	
 	/**
 	 * Returns the standard string representation of this IRIRef, as defined
 	 * by <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC 3987</a>.
@@ -457,8 +462,13 @@ public class IRIRef {
 		}
 		if (this.scheme == null) {
 			this.scheme = base.scheme;
-			if (!this.hasAuthority() && base.hasAuthority()) {
-				this.authority = new IRIAuthority(base.authority);
+			//if (!this.hasAuthority() && base.hasAuthority()) {
+			if (!this.hasAuthority()) {
+				if (base.hasAuthority()) { 
+					this.authority = new IRIAuthority(base.authority);
+				} else {
+					this.authority = null;
+				}
 				if (this.hasEmptyPath()) {
 					this.path.resolveEmptyPath(base.path);
 					//this.path.clear();
@@ -550,16 +560,53 @@ public class IRIRef {
 				}
 				// Now either one of the two iterators have no next, or the two strings
 				// are different.
+				
+				
 				if (same && !baseIt.hasNext() && !resultIt.hasNext()) {
-					System.out.println("they are the same");
-					//result.path.clear();
-					if (Objects.equals(result.query, base.query)) {
+					System.out.println("AFTER SIMILARITY TRAVERSAL: Both paths are exactly the sames");
+					if (base.hasQuery() && !result.hasQuery()) {
+						System.out.println("We have to change something in the authority+path");
+						
+						
+					} else if (base.hasQuery() && base.query.equals(result.query)) {
 						result.query = null;
 					}
+				} else if (same && !baseIt.hasNext()) {
+					System.out.println("AFTER SIMILARITY TRAVERSAL: the result path is longer");
+					if (currentBase  == null) {
+						
+					} else if (currentBase.equals("")) {
+						resultIt.add(".");
+						resultIt.add("");
+					} else {
+						resultIt.add(currentBase);
+					}
+				} else if (same && !resultIt.hasNext()) {
+					System.out.println("AFTER SIMILARITY TRAVERSAL: the base path is longer");
+				} else {
+					System.out.println("AFTER SIMILARITY TRAVERSAL: the paths differed on Base: " + currentBase + ", result: " + currentResult);
+				}
+			}
+		}			
+/*
+					if (base.hasQuery() && base.query.equals(result.query)) {
+						result.query = null;
+					} else if (base.hasQuery() && !result.hasQuery()){
+						if (currentBase.equals("") && base.path.size() > 1) {
+							System.out.println("Current is: <" + currentBase + ">");
+							result.path.add(".");
+						} else if (currentBase.equals("")) {
+							System.out.println("HERE");
+						} else {
+							result.path.add(currentBase);
+						}
+					}
+				} else if (same && !baseIt.hasNext()) {
+					System.out.println("Juste garder ce qu'on a ...");
 				}
 				System.out.println("Base: " + currentBase + ", result: " + currentResult);
 			}
-		}
+		}*/
 		
 		return result;
 		

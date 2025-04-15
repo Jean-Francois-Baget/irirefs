@@ -3,6 +3,8 @@ package fr.inria.boreal.jfbaget.irirefs.manager;
 
 import java.util.List;
 
+import org.apache.jena.irix.IRIx;
+
 import fr.inria.boreal.jfbaget.irirefs.IRIRef;
 import fr.inria.boreal.jfbaget.irirefs.IRIRef.IRITYPE;
 import fr.inria.boreal.jfbaget.irirefs.manager.IRIManager.PrefixedIRI;
@@ -30,11 +32,35 @@ public class Main {
     	IRIRef testedIRI = new IRIRef(tested, IRITYPE.IRI).resolve();
     	IRIRef relativizedIRI = testedIRI.relativize(baseIRI);
     	IRIRef resolvedIRI = relativizedIRI.resolve(baseIRI);
+    	boolean correct = resolvedIRI.equals(testedIRI);
     	System.out.println("Base:        <" + baseIRI + ">");
     	System.out.println("Tested:      <" + testedIRI + ">");
     	System.out.println("Relativized: <" + relativizedIRI + ">");
     	System.out.println("Resolved:    <" + resolvedIRI + ">");
-    	System.out.println("Correct?      " + resolvedIRI.equals(testedIRI));
+    	System.out.println("Correct?      " + correct);
+    	System.out.println("-----------------With Jena-----------------");
+    	IRIx baseIRIx = IRIx.create(base);
+    	IRIx testedIRIx = IRIx.create(tested);
+    	IRIx relativizedIRIx = baseIRIx.relativize(testedIRIx);
+    	IRIx resolvedIRIx = null;
+    	System.out.println("Base:        <" + baseIRIx.str() + ">");
+    	System.out.println("Tested:      <" + testedIRIx.str() + ">");
+    	if (relativizedIRIx != null) {
+    		resolvedIRIx = baseIRIx.resolve(relativizedIRIx);
+    		System.out.println("Relativized: <" + relativizedIRIx.str() + ">");
+    		System.out.println("Resolved:    <" + resolvedIRIx.str() + ">");
+    		System.out.println("Correct?      " + resolvedIRIx.equals(testedIRIx));
+    	} else {
+    		System.out.println("No relativization found");
+    		if (correct) {
+    			System.out.println("(trying with the relativized found by IRIRef)");
+    			relativizedIRIx = IRIx.create(relativizedIRI.recompose());
+    			resolvedIRIx = baseIRIx.resolve(relativizedIRIx);
+    			System.out.println("Relativized: <" + relativizedIRIx.str() + ">");
+        		System.out.println("Resolved:    <" + resolvedIRIx.str() + ">");
+        		System.out.println("Correct?      " + resolvedIRIx.equals(testedIRIx));
+    		}
+    	}
     	System.out.println("===========================================");
     }
     
@@ -44,7 +70,7 @@ public class Main {
     public static void main(String[] args) {
     	// TESTED, BASE
     	List<List<String>> tests = List.of(
-    		List.of("http://www.lirmm.fr?q#f", "http://www.lirmm.fr?q")	
+    		List.of("ex:a/b/c", "ex:a/b/")	
     	);
     			
     	

@@ -46,6 +46,23 @@
       <version>0.0.1-SNAPSHOT</version>
     </dependency>
     <dependency>
+	  <groupId>org.apache.jena</groupId>
+      <artifactId>jena-core</artifactId>
+      <version>5.0.0</version>
+    </dependency>
+    <!--  Apache Jena IRI (Required for IRIx)  -->
+    <dependency>
+      <groupId>org.apache.jena</groupId>
+      <artifactId>jena-iri</artifactId>
+      <version>5.0.0</version>
+      </dependency>
+    <!--  Apache Jena ARQ (Querying & Parsing)  -->
+    <dependency>
+      <groupId>org.apache.jena</groupId>
+      <artifactId>jena-arq</artifactId>
+      <version>5.0.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-api</artifactId>
       <scope>test</scope>
