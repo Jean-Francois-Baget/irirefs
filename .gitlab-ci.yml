@@ -1,7 +1,9 @@
 pages:
   stage: deploy
   script:
-    - echo "Deploying Javadoc to GitLab pages..."
+    - echo "Generating Javadoc..."
+    - mkdir -p public
+    - javadoc -d public -sourcepath src -subpackages fr.inria.boreal.jfbaget.irirefs
   artifacts:
     paths:
       - public
