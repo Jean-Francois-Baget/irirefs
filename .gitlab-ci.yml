@@ -1,7 +1,7 @@
 pages:
   stage: deploy
   script:
-    - echo "Deploying Javadoc to GitLab pages..."
+    - echo "Using pre-generated Javadoc"
   artifacts:
     paths:
       - public
