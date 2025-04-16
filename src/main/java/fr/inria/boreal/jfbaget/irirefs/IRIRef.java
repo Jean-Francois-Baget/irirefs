@@ -22,7 +22,7 @@ import fr.inria.boreal.jfbaget.nanoparse.matches.ListMatch;
 public class IRIRef {
 	
 	private String scheme = null;
-	private final  IRIPath path = new IRIPath(List.of()); // Voir plus tard avec constructeur vide
+	private final  IRIPath path = new IRIPath(false, List.of()); // Voir plus tard avec constructeur vide
 	private String query = null;
 	private String fragment = null;
 	private IRIAuthority authority = null;
@@ -171,6 +171,7 @@ public class IRIRef {
 			this.authority = new IRIAuthority(other.authority);
 		}
 		this.path.addAll(other.path);
+		this.path.setRooted(other.path.isRooted());
 		this.query = other.query;
 		this.fragment = other.fragment;
 		this.isResolved = other.isResolved;
@@ -179,8 +180,8 @@ public class IRIRef {
 	}
 	
 	
-	public IRIRef(String scheme, String user, String host, int port, List<String> path, String query, String fragment) {
-		this.initializeFromFields(scheme, user, host, port, path, query, fragment);
+	public IRIRef(String scheme, String user, String host, int port, boolean rooted, List<String> path, String query, String fragment) {
+		this.initializeFromFields(scheme, user, host, port, rooted, path, query, fragment);
 	}
 	
 	/**
@@ -288,6 +289,10 @@ public class IRIRef {
 	
 	public boolean hasEmptyPath() {
 		return this.path.isEmpty();
+	}
+	
+	public boolean hasRootedPath() {
+		return this.path.isRooted();
 	}
 	
 	public boolean hasFragment() {
@@ -462,17 +467,14 @@ public class IRIRef {
 		}
 		if (this.scheme == null) {
 			this.scheme = base.scheme;
-			//if (!this.hasAuthority() && base.hasAuthority()) {
 			if (!this.hasAuthority()) {
 				if (base.hasAuthority()) { 
 					this.authority = new IRIAuthority(base.authority);
 				} else {
 					this.authority = null;
 				}
-				if (this.hasEmptyPath()) {
+				if (!this.path.isRooted() && this.hasEmptyPath()) {
 					this.path.resolveEmptyPath(base.path);
-					//this.path.clear();
-					//this.path.addAll(base.path);
 					if (this.query == null) {
 						this.query = base.query;
 					}
@@ -698,11 +700,12 @@ public class IRIRef {
 	
 	
 	
-	private void initializeFromFields(String scheme, String user, String host, Integer port, List<String> path, String query, String fragment) {
+	private void initializeFromFields(String scheme, String user, String host, Integer port, boolean rooted, List<String> path, String query, String fragment) {
 		// Here I should match the parameters against the parser...
 		this.scheme = scheme;
 		this.authority = new IRIAuthority(user, host, port);
 		this.path.addAll(path);
+		this.path.setRooted(rooted);
 		this.query = query;
 		this.fragment = fragment;
 	}

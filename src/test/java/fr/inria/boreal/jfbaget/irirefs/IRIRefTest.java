@@ -72,7 +72,7 @@ class IRIRefTest {
 				List.of("./g", "http://a/b/c/g"),
 				List.of("g/", "http://a/b/c/g/"),
 				List.of("/g", "http://a/g"),
-				List.of("//g", "http://g"),
+				List.of("//g", "http://g"),   
 				List.of("?y", "http://a/b/c/d;p?y"),
 				List.of("g?y", "http://a/b/c/g?y"),
 				List.of("#s", "http://a/b/c/d;p?q#s"),
@@ -84,7 +84,7 @@ class IRIRefTest {
 				List.of("", "http://a/b/c/d;p?q"),
 				List.of(".", "http://a/b/c/"),
 				List.of("./", "http://a/b/c/"),
-				List.of("..", "http://a/b/"),
+				List.of("..", "http://a/b/"), // HERE
 				List.of("../", "http://a/b/"),
 				List.of("../g", "http://a/b/g"),
 				List.of("../..", "http://a/"),

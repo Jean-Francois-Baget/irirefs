@@ -18,12 +18,22 @@ public final class IRIPath extends AbstractSequentialList<String> {
 	private static final String DOUBLEDOT_SEGMENT = "..";
 	private static final String SEGMENT_SEPARATOR = "/";
 	
+	private boolean rooted;
     private final LinkedList<String> segments;
     
     private static final boolean DEBUG_DOT_SEGMENTS = false;
 
-    public IRIPath(List<String> initialSegments) {
+    public IRIPath(boolean rooted, List<String> initialSegments) {
+    	this.rooted = rooted;
         this.segments = new LinkedList<>(initialSegments);
+    }
+    
+    public boolean isRooted() {
+    	return this.rooted;
+    }
+    
+    void setRooted(boolean rooted) {
+    	this.rooted = rooted;
     }
 
     @Override
@@ -38,7 +48,8 @@ public final class IRIPath extends AbstractSequentialList<String> {
     
     @Override
     public boolean isEmpty() {
-    	return this.segments.isEmpty() || (this.segments.size() == 1 && this.segments.getFirst().equals(EMPTY_SEGMENT));
+    	//return this.segments.isEmpty() || (this.segments.size() == 1 && this.segments.getFirst().equals(EMPTY_SEGMENT));
+    	return this.segments.isEmpty();
     }
     
     public List<String> getSegments() {
@@ -46,11 +57,18 @@ public final class IRIPath extends AbstractSequentialList<String> {
     }
     
     public String recompose() {
-    	return String.join(SEGMENT_SEPARATOR, this.segments);
+    	if (this.rooted) {
+    		return SEGMENT_SEPARATOR + String.join(SEGMENT_SEPARATOR, this.segments);
+    	} else {
+    		return  String.join(SEGMENT_SEPARATOR, this.segments);
+    	}
     }
     
     public StringBuilder recompose(StringBuilder builder) {
     	ListIterator<String> iterator = this.segments.listIterator();
+    	if (this.rooted) { 
+    		builder.append(SEGMENT_SEPARATOR);
+    	}
     	if (iterator.hasNext()) {
     		builder.append(iterator.next());
     		while (iterator.hasNext()) {
@@ -89,17 +107,20 @@ public final class IRIPath extends AbstractSequentialList<String> {
     	String pathType = match.reader().getName();
     	switch (pathType) {
     		case "ipath_abempty" : {
-    			this.add("");
-				this.initializeFromSegmentListMatch((List<StringMatch>)match.result());
+    			//System.out.println("We are here");
+    			List<StringMatch> args = (List<StringMatch>)match.result();
+    			if (!args.isEmpty()) {
+    				this.rooted = true;
+    			}
+				this.initializeFromSegmentListMatch(args);
 				break;
     		}
     		case "_opt_ipath_absolute" :{
-    			this.add("");
-    			this.add("");
+    			this.rooted = true;
     			break;
     		}
     		case "_seq_ipath_absolute" : {
-    			this.add("");
+    			this.rooted = true;
     		}
     		case "ipath_rootless" :
     		case "ipath_noscheme" : {
@@ -123,21 +144,26 @@ public final class IRIPath extends AbstractSequentialList<String> {
     
     protected void resolveEmptyPath(IRIPath other) {
     	this.clear();
+    	this.rooted = other.rooted;
 		this.addAll(other);
     }
     
     // with otherHasAuthority = other.hasAuthority()
     
     protected void resolveNonEmptyPath(IRIPath other, boolean otherHasAuthority) {
-    	if (!this.getFirst().equals(EMPTY_SEGMENT)) {
+    	//if (!this.getFirst().equals(EMPTY_SEGMENT)) {
+    	if (!this.rooted) {	
 			if (otherHasAuthority && other.isEmpty()) {
-				this.addFirst(EMPTY_SEGMENT);
+			//if (otherHasAuthority) {
+				//this.addFirst(EMPTY_SEGMENT);
+				this.rooted = true;
 			} else if (! other.segments.isEmpty()){
 				 //return a string consisting of the reference's path component
 			     // appended to all but the last segment of the base URI's path (i.e.,
 			     // excluding any characters after the right-most "/" in the base URI
 			     // path, or excluding the entire base URI path if it does not contain
 			     //any "/" characters).
+				this.rooted = other.rooted;
 				ListIterator<String> it = other.listIterator(other.size() - 1); 
 				while (it.hasPrevious()) {
 				    this.addFirst(it.previous());
@@ -148,8 +174,62 @@ public final class IRIPath extends AbstractSequentialList<String> {
     	
     }
     
-    
     protected void removeDotSegments() {
+    	if (DEBUG_DOT_SEGMENTS) System.out.printf("Removing dot segments on path \"%s\".\n", this.recompose());
+    	ListIterator<String> iterator = this.listIterator();
+		String current;
+		boolean currentRoot = this.rooted;
+		while(iterator.hasNext()) {
+			current = iterator.next();
+			if (DEBUG_DOT_SEGMENTS) System.out.printf("Examining \"%s\" in %s list %s\n", 
+					current, this.rooted ? "rooted" : "unrooted", this.segments);
+			if (current.equals(DOT_SEGMENT)) {
+				if (currentRoot) {
+					if (iterator.hasNext()) {
+						iterator.remove();
+					} else {
+						iterator.set(EMPTY_SEGMENT);
+					}
+				} else {
+					iterator.remove();
+					currentRoot = true;
+				}
+			} else if (current.equals(DOUBLEDOT_SEGMENT)) {
+				if (currentRoot) {
+					if (iterator.hasNext()) {
+						iterator.remove();
+					} else {
+						iterator.set(EMPTY_SEGMENT);
+						iterator.previous();
+					}
+					if (iterator.hasPrevious()) {
+						iterator.previous();
+						iterator.remove();
+					}
+					
+				} else {
+					
+					iterator.remove();
+					currentRoot = true;
+				}
+				
+				
+				
+			} else if (current.equals(EMPTY_SEGMENT) && !this.rooted && iterator.previousIndex() == 0)  {
+				if (DEBUG_DOT_SEGMENTS) System.out.printf("Rare case when the unrooted list is [\"\", ...]\n");
+				this.rooted = true;
+				iterator.remove();
+			} else {
+				currentRoot = true;
+			}
+			
+		}
+    }
+    
+    
+    
+    
+    protected void removeDotSegments2() {
     	if (DEBUG_DOT_SEGMENTS) System.out.printf("Removing dot segments on path \"%s\".\n", this.recompose());
 		ListIterator<String> iterator = this.listIterator();
 		String current;

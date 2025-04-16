@@ -68,6 +68,46 @@ public class Main {
 	
 
     public static void main(String[] args) {
+    	
+
+    	
+    	IRIRef foo = new IRIRef("http:.//./a");
+    	IRIRef res = foo.resolve();
+    	System.out.println(res);
+    	System.out.println(res.hasRootedPath());
+    	System.out.println(res.getSegments());
+    	System.out.println(res.getSegments().size());
+    	
+
+    	/*
+    	IRIRef base1 = new IRIRef("http://www.lirmm.fr/me?query");
+    	IRIRef rel1 = new IRIRef("#bar");
+    	System.out.println(base1);
+    	IRIRef res1 = rel1.resolve(base1);
+    	System.out.println(res1);
+    	System.out.println(base1.hasRootedPath());
+    	System.out.println(rel1.hasRootedPath());
+    	System.out.println(res1.hasRootedPath());
+    	
+    	System.out.println("=================");
+    	
+    	IRIRef base = new IRIRef("http://a/b/c/d;p?q");
+    	IRIRef rel = new IRIRef("g");
+    	System.out.println(base);
+    	IRIRef res = rel.resolve(base);
+    	System.out.println(res);
+    	System.out.println(rel.hasRootedPath());
+    	System.out.println(res.hasRootedPath());
+    	
+    	System.out.println("=================");
+    	
+    	IRIRef test = new IRIRef("http://a/b/c/./g/.").resolve();
+    	System.out.println(test);
+    	System.out.println(test.hasRootedPath());
+    	*/
+    	
+    	/*
+    	
     	// TESTED, BASE
     	List<List<String>> tests = List.of(
     		List.of("ex:a/b/c", "ex:a/b/")	
@@ -78,7 +118,7 @@ public class Main {
     		testRelativisation(test.get(0), test.get(1));
     	}
     	
-    	
+    	*/
     	
       /*	
       IRIManager env = new IRIManager();
