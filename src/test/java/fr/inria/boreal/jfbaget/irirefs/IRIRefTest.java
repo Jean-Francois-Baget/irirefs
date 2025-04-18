@@ -22,7 +22,8 @@ class IRIRefTest {
 				"/?query#fragment",
 				"?query#fragment",
 				"/#fragment",
-				"?query"
+				"?query",
+				"//autho"
 				);
 		for (String input : inputs) {
 			IRIRef iri = new IRIRef(input);

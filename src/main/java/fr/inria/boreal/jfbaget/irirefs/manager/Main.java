@@ -53,12 +53,12 @@ public class Main {
     	} else {
     		System.out.println("No relativization found");
     		if (correct) {
-    			System.out.println("(trying with the relativized found by IRIRef)");
+    			System.out.println("     (trying with the relativized found by IRIRef)");
     			relativizedIRIx = IRIx.create(relativizedIRI.recompose());
     			resolvedIRIx = baseIRIx.resolve(relativizedIRIx);
-    			System.out.println("Relativized: <" + relativizedIRIx.str() + ">");
-        		System.out.println("Resolved:    <" + resolvedIRIx.str() + ">");
-        		System.out.println("Correct?      " + resolvedIRIx.equals(testedIRIx));
+    			System.out.println("          Relativized: <" + relativizedIRIx.str() + ">");
+        		System.out.println("          Resolved:    <" + resolvedIRIx.str() + ">");
+        		System.out.println("          Correct?      " + resolvedIRIx.equals(testedIRIx));
     		}
     	}
     	System.out.println("===========================================");
@@ -70,14 +70,14 @@ public class Main {
     public static void main(String[] args) {
     	
 
-    	
+    	/*
     	IRIRef foo = new IRIRef("http:.//./a");
     	IRIRef res = foo.resolve();
     	System.out.println(res);
     	System.out.println(res.hasRootedPath());
     	System.out.println(res.getSegments());
     	System.out.println(res.getSegments().size());
-    	
+    	*/
 
     	/*
     	IRIRef base1 = new IRIRef("http://www.lirmm.fr/me?query");
@@ -106,11 +106,11 @@ public class Main {
     	System.out.println(test.hasRootedPath());
     	*/
     	
-    	/*
+    	
     	
     	// TESTED, BASE
     	List<List<String>> tests = List.of(
-    		List.of("ex:a/b/c", "ex:a/b/")	
+    		List.of("ex:a/b/c", "ex:/a/b")	
     	);
     			
     	
@@ -118,7 +118,7 @@ public class Main {
     		testRelativisation(test.get(0), test.get(1));
     	}
     	
-    	*/
+    	
     	
       /*	
       IRIManager env = new IRIManager();

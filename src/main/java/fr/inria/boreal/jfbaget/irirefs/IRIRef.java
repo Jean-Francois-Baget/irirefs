@@ -539,57 +539,77 @@ public class IRIRef {
 		if (! this.isResolved || ! base.isResolved) {
 			throw new IllegalArgumentException("Can only relativize a resolved IRI against a resolved base.");
 		}
-		IRIRef result = new IRIRef(this);
-		if (result.scheme.equals(base.scheme)) {
-			result.scheme = null;
-			if (Objects.equals(result.authority, base.authority)) {
-				result.authority = null;
-				// Iterating through segments of the two paths until they differ
-				ListIterator<String> baseIt = base.path.listIterator();
-				ListIterator<String> resultIt = result.path.listIterator();
-				boolean same = true;
-				String currentBase = null;
-				String currentResult = null;
-				while(baseIt.hasNext() && resultIt.hasNext() && same) {
-					currentBase = baseIt.next();
-					currentResult = resultIt.next();
-					if (!currentBase.equals(currentResult)) {
-						same = false;
-					}
-					else {
-						resultIt.remove();
-					}
-				}
+		if (!this.scheme.equals(base.scheme)) // they both have schemes, and they are distinct
+			return this;
+		if (this.authority == null && base.authority != null) // cannot remove scheme or base authority would prevail
+			return this;
+		if (this.authority == null && base.authority == null && 
+				!this.hasRootedPath() && base.hasRootedPath()) // this = <ex:xxx> and base = <ex:/xxx>
+			return this;
+		IRIRef copy = new IRIRef(this); // we know we will change something, so make a copy
+		copy.scheme = null; // since they have equal schemes
+		if (!Objects.equals(copy.authority, base.authority))
+			return copy;
+		copy.authority = null; // since they have equal (eventually null) authorities
+		ListIterator<String> baseIt = base.path.listIterator();
+		ListIterator<String> copyIt = copy.path.listIterator();
+		// Now we iterate along the two paths until they differ, while removing similar segments in copy
+		boolean same = true;
+		String currentBase = null;
+		String currentCopy = null;
+		while(same && baseIt.hasNext() && copyIt.hasNext()) {
+			currentBase = baseIt.next();
+			currentCopy = copyIt.next();
+			if (!currentBase.equals(currentCopy)) {
+				same = false;
+			} else {
+				copyIt.remove();
+			}
+		}
+		if (same && !baseIt.hasNext() && !copyIt.hasNext()) {
+			if (base.hasRootedPath() == copy.hasRootedPath()) { // those are exactly the same paths, we should remove the copy path
+				if (base.hasQuery() && !copy.hasQuery()) {
+					// TO DO: find a way to have a non empty path in copy
+				} else if (base.hasQuery() && base.query.equals(copy.query)) {
+					copy.query = null;
+					return copy;
+				} // now if base has a query, then copy has a different defined one, nothing to do
+			} else { // only 1 is rooted, so both equal authorities are empty, so we know copy is rooted
+				return copy;
+			}
+		} else if (same && !baseIt.hasNext()) {
+			
+		}
+		
 				// Now either one of the two iterators have no next, or the two strings
 				// are different.
 				
 				
-				if (same && !baseIt.hasNext() && !resultIt.hasNext()) {
+				if (same && !baseIt.hasNext() && !copyIt.hasNext()) {
 					System.out.println("AFTER SIMILARITY TRAVERSAL: Both paths are exactly the sames");
-					if (base.hasQuery() && !result.hasQuery()) {
+					if (base.hasQuery() && !copy.hasQuery()) {
 						System.out.println("We have to change something in the authority+path");
 						
 						
-					} else if (base.hasQuery() && base.query.equals(result.query)) {
-						result.query = null;
+					} else if (base.hasQuery() && base.query.equals(copy.query)) {
+						copy.query = null;
 					}
 				} else if (same && !baseIt.hasNext()) {
 					System.out.println("AFTER SIMILARITY TRAVERSAL: the result path is longer");
 					if (currentBase  == null) {
 						
 					} else if (currentBase.equals("")) {
-						resultIt.add(".");
-						resultIt.add("");
+						copyIt.add(".");
+						copyIt.add("");
 					} else {
-						resultIt.add(currentBase);
+						//copy.add(currentBase);
 					}
-				} else if (same && !resultIt.hasNext()) {
+				} else if (same && !copyIt.hasNext()) {
 					System.out.println("AFTER SIMILARITY TRAVERSAL: the base path is longer");
 				} else {
-					System.out.println("AFTER SIMILARITY TRAVERSAL: the paths differed on Base: " + currentBase + ", result: " + currentResult);
+					System.out.println("AFTER SIMILARITY TRAVERSAL: the paths differed on Base: " + currentBase + ", result: " + currentCopy);
 				}
-			}
-		}			
+					
 /*
 					if (base.hasQuery() && base.query.equals(result.query)) {
 						result.query = null;
@@ -610,7 +630,7 @@ public class IRIRef {
 			}
 		}*/
 		
-		return result;
+		return copy;
 		
 	}
 	
