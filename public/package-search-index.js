@@ -1,1 +1,0 @@
-packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html"},{"l":"fr.inria.boreal.jfbaget.irirefs"},{"l":"fr.inria.boreal.jfbaget.irirefs.exceptions"},{"l":"fr.inria.boreal.jfbaget.irirefs.manager"},{"l":"fr.inria.boreal.jfbaget.irirefs.manager.formatter"},{"l":"fr.inria.boreal.jfbaget.irirefs.manager.normalizer"}];updateSearchResults();

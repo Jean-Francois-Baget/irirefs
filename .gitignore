@@ -6,6 +6,10 @@
 *.ear
 *.log
 
+
+# old repo
+old/
+
 # === Eclipse ===
 .project
 .classpath
