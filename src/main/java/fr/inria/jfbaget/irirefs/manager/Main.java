@@ -3,7 +3,6 @@ package fr.inria.jfbaget.irirefs.manager;
 
 import java.util.List;
 
-import fr.inria.jfbaget.irirefs.IRIBuilder;
 import org.apache.jena.irix.IRIx;
 
 import fr.inria.jfbaget.irirefs.IRIRef;
@@ -27,8 +26,8 @@ public class Main {
     
     public static void testRelativisation(String tested, String base) {
     	System.out.println("===========================================");
-    	IRIRef baseIRI = new IRIRef(base, IRIBuilder.IRITYPE.ABS).resolve();
-    	IRIRef testedIRI = new IRIRef(tested, IRIBuilder.IRITYPE.IRI).resolve();
+    	IRIRef baseIRI = new IRIRef(base, IRIRef.IRITYPE.ABS).resolve();
+    	IRIRef testedIRI = new IRIRef(tested, IRIRef.IRITYPE.IRI).resolve();
     	IRIRef relativizedIRI = testedIRI.relativize(baseIRI);
     	IRIRef resolvedIRI = relativizedIRI.resolve(baseIRI);
     	boolean correct = resolvedIRI.equals(testedIRI);

@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.NoSuchElementException;
 import java.util.Set;
 
-import fr.inria.jfbaget.irirefs.IRIBuilder;
 import fr.inria.jfbaget.irirefs.IRIRef;
 import fr.inria.jfbaget.irirefs.IRIRef.IRITYPE;
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
@@ -109,7 +108,7 @@ public class IRIManager implements IManager{
     public IRIManager(String iriString) throws IRIParseException{
     	this.normalizer = new BasicNormalizer();
     	this.formatter = new DLGPFormatter();
-        this.base = this.normalizer.normalize(new IRIRef(iriString, IRIBuilder.IRITYPE.ABS).resolve());
+        this.base = this.normalizer.normalize(new IRIRef(iriString, IRIRef.IRITYPE.ABS).resolve());
         this.prefixes = new HashMap<>();
     }
 

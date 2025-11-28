@@ -1,26 +1,23 @@
 package fr.inria.jfbaget.irirefs;
 
-
-import java.util.HashMap;
 import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import java.util.Objects;
 
-import fr.inria.jfbaget.irirefs.parser.IRIParser;
+import fr.inria.jfbaget.irirefs.parser.IRIRefParser;
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
 
+import fr.inria.jfbaget.irirefs.parser.IRIRefValidator;
 import fr.inria.jfbaget.nanoparse.IMatch;
 import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 
 
-public class IRIRef {
+public class
+IRIRef {
 	
-	String scheme = null;
-	IRIPath path = new IRIPath(false, List.of()); // Voir plus tard avec constructeur vide
-	String query = null;
-	String fragment = null;
-	IRIAuthority authority = null;
+	private String scheme = null;
+	private IRIPath path = null; // Voir plus tard avec constructeur vide
+	private String query = null;
+	private String fragment = null;
+	private IRIAuthority authority = null;
 	
 	private boolean isResolved = false;
 	private boolean isNormalized = false;
@@ -35,32 +32,22 @@ public class IRIRef {
 	public static final String RELATIVIZE_ERROR = ":";
 	
 	
-	public static  enum IRITYPE {
-		ANY(IRIParser.IRIREF),
-		IRI(IRIParser.IRI), 
-		REL(IRIParser.RELATIVE), 
-		ABS(IRIParser.ABSOLUTE);
+	public enum IRITYPE {
+		ANY(IRIRefParser.IRIREF),
+		IRI(IRIRefParser.IRI),
+		REL(IRIRefParser.RELATIVE),
+		ABS(IRIRefParser.ABSOLUTE);
 		
 		private final String ruleName;
-
 		IRITYPE(String ruleName) {
 			this.ruleName = ruleName;
 		}
-
-		private String getRuleName() {
+		public String getRuleName() {
 			return this.ruleName;
 		}
-		
-		private static final Map<String, IRITYPE> LOOKUP = new HashMap<>();
-
-	    static {
-	        for (IRITYPE t : IRITYPE.values()) {
-	            LOOKUP.put(t.getRuleName(), t);
-	        }
-	    }
 	};
 	
-	public static enum NORMALIZATION {
+	public enum NORMALIZATION {
 		/**
 		 * <a href="https://datatracker.ietf.org/doc/html/rfc3987#section-5.3.1">RFC 3987, Simple String Comparison</a>
 		 */
@@ -101,97 +88,106 @@ public class IRIRef {
 		PROTOCOL
 	}
 	
-	private static final IRIBuilder parser = new IRIBuilder();
-	
+	private static final IRIRefValidator parser = new IRIRefValidator();
 
+
+
+	// =================================================================================================================
 	// CONSTRUCTORS
-	
-	/**
-	 * Constructs an IRI reference by parsing the given string, 
-	 * accepting any valid IRI reference form (IRI, absolute IRI or relative IRI).
-	 *
-	 * @param iriString {@link String} - the IRI string to parse
-	 * @throws IRIParseException if the input is not a valid IRI reference
-	 */
+	// =================================================================================================================
+
 	public IRIRef(String iriString) throws IRIParseException {
-	    this(iriString, IRIBuilder.IRITYPE.ANY);
+		this(iriString, IRITYPE.ANY);
 	}
-	
-	
-	/**
-	 * Constructs an IRI reference from its string representation,
-	 * validating it against a specific IRI type.
-	 *
-	 * @param input {@link String} - the IRI string to parse
-	 * @param type {@link IRITYPE} - the expected type of IRI, e.g., {@code IRITYPE.ANY} (for any IRI Reference), 
-	 * {@code IRITYPE.IRI} (for an IRI), {@code IRITYPE.ABS} (for an absolute IRI) or {@code IRITYPE.REL} (for a relative IRI).
-	 * @throws IRIParseException if the input is not a valid IRI of the specified type,
-	 *                            or if the parsed input does not consume the full string
-	 */
-	public IRIRef(String iriString, IRIBuilder.IRITYPE type) throws IRIParseException {
 
-		parser.parse(iriString, type, this);
-		/*
-	    // Parse the input string from position 0 using the specified rule
-	    IMatch iriMatch = parser.read(iriString, 0, type.getRuleName());
-
-	    // Validate that parsing succeeded and the entire string was consumed
-	    if (iriMatch.success() && iriMatch.end() == iriString.length()) {
-	        this.initializeFromMatch((ListMatch)iriMatch);
-	    } else {
-	        throw new IRIParseException(String.format(
-	        		"The string \"%s\" does not represent a valid %s, stopped parsing at position %d.",
-	        		iriString, type.getRuleName(), iriMatch.end())
-	        );
-	    }
-
-		 */
+	public IRIRef(String iriString, IRITYPE type) throws IRIParseException {
+		this(parse(iriString, type));
 	}
-	
-	/**
-	 * Builds an IRI Reference from the result of an IRIParser.
-	 * @param parsed
-	 */
-	public IRIRef(IMatch parsed) throws IRIParseException, IllegalArgumentException{
-		if (! parsed.success()) {
-			throw new IRIParseException("The argument given was not a successful match.");
-		}
-		String name = parsed.reader().getName();
-		if (name.equals("IRI") || name.equals("irelative_ref") || name.equals("absolute_IRI")) {
-			this.initializeFromMatch((ListMatch)parsed);
-		}
-		else {
-			throw new IllegalArgumentException("The argument given");
-		}
-	}
-	
+
 	public IRIRef(IRIRef other) {
 		this.scheme = other.scheme;
-		if (other.authority != null) {
-			this.authority = new IRIAuthority(other.authority);
-		}
-		this.path.addAll(other.path);
-		this.path.setRooted(other.path.isRooted());
+		this.authority = (other.authority == null)? null: new IRIAuthority(other.authority);
+		this.path = new IRIPath(other.path);
 		this.query = other.query;
 		this.fragment = other.fragment;
 		this.isResolved = other.isResolved;
 		this.isNormalized = other.isNormalized;
 		this.isFreezed = false;
 	}
-	
-	
-	public IRIRef(String scheme, String user, String host, int port, boolean rooted, List<String> path, String query, String fragment) {
-		this.initializeFromFields(scheme, user, host, port, rooted, path, query, fragment);
+
+	private static ListMatch parse(String iriString, IRITYPE type) throws IRIParseException {
+		IMatch iriMatch = parser.read(iriString, 0, type.getRuleName());
+		if (!iriMatch.success() || iriMatch.end() != iriString.length()) {
+			throw new IRIParseException(String.format(
+					"The string \"%s\" does not represent a valid %s, stopped parsing at position %d.",
+					iriString, type.getRuleName(), iriMatch.end()));
+		}
+		return ((ListMatch)iriMatch);
 	}
 
+	private IRIRef(ListMatch match) {
+		IMatch pathAuthorityMatch;
 
-	public IRIRef(String scheme, IRIAuthority authority, IRIPath path, String query, String fragment) {
+		switch(match.reader().getName()) {
+			case IRIRefParser.IRI: {
+				this.fragment = (String) match.result().get(3).result();
+				// Intentional fallthrough: continue as in ABSOLUTE
+			}
+			case IRIRefParser.ABSOLUTE: {
+				this.scheme = (String) match.result().get(0).result();
+				this.query = (String) match.result().get(2).result();
+				pathAuthorityMatch = match.result().get(1);
+				break;
+			}
+			case IRIRefParser.RELATIVE: {
+				this.query = (String) match.result().get(1).result();
+				this.fragment = (String) match.result().get(2).result();
+				pathAuthorityMatch = match.result().get(0);
+				break;
+			}
+			default: {
+				throw new AssertionError(String.format(
+						"Unsupported IRI type: \"%s\". Expected one of: IRI, absolute_IRI, irelative_ref.",
+						match.reader().getName()
+				));
+			}
+		}
+		if (pathAuthorityMatch.reader().getName().equals(IRIRefParser.HIERARCHICAL)) {
+			this.authority = new IRIAuthority((ListMatch) ((ListMatch)pathAuthorityMatch ).result().get(0));
+			this.path = new IRIPath(((ListMatch) pathAuthorityMatch).result().get(1));
+		} else {
+			this.path = new IRIPath(pathAuthorityMatch);
+		}
+	}
+
+	private IRIRef(String scheme, IRIAuthority authority, IRIPath path, String query, String fragment) {
 		this.scheme = scheme;
 		this.authority = authority;
 		this.path =	path;
 		this.query = query;
 		this.fragment = fragment;
 	}
+
+
+	/*
+
+	
+	public IRIRef(String scheme, String user, String host, int port, boolean rooted, List<String> path, String query, String fragment) {
+		this.scheme = scheme;
+		if (user != null || host != null ||  port >= 0) {
+			this.authority = new IRIAuthority(user, host, port);
+		}
+		// RAJOUTER VERIFICATION DE PATH
+		this.path = new IRIPath(rooted, path);
+		this.query = query;
+		this.fragment = fragment;
+	}
+
+	 */
+
+	// =================================================================================================================
+	// UTILS
+	// =================================================================================================================
 	
 	/**
 	 * Returns a deep copy of this {@code IRIRef}.
@@ -203,6 +199,39 @@ public class IRIRef {
 	public IRIRef copy() {
 	    return new IRIRef(this);
 	}
+
+	@Override
+	public boolean equals(Object other) {
+		if (this == other) return true;
+		if (other instanceof String s) return recompose().equals(s);
+		if (other instanceof IRIRef iri) return recompose().equals(iri.recompose());
+		return false;
+	}
+
+	@Override
+	public int hashCode() {
+		return this.recompose().hashCode();
+	}
+
+	/**
+	 * Returns the standard string representation of this IRIRef, as defined
+	 * by <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC 3987</a>.
+	 * <p>
+	 * This is equivalent to calling {@link #recompose()} and includes the scheme,
+	 * authority, path, query, and fragment components, when present.
+	 * </p>
+	 *
+	 * @return the IRIRef as a string
+	 */
+	@Override
+	public String toString() {
+		return this.recompose();
+	}
+
+
+	// =================================================================================================================
+	// GETTERS
+	// =================================================================================================================
 	
 	/**
 	 * Returns the scheme component of this IRI, or {@code null} if none is present.
@@ -297,7 +326,7 @@ public class IRIRef {
 	}
 	
 	public boolean hasEmptyPath() {
-		return this.path.isEmpty();
+		return this.path.getSegments().isEmpty();
 	}
 	
 	public boolean hasRootedPath() {
@@ -319,6 +348,10 @@ public class IRIRef {
 	public boolean isRelative() {
 		return this.scheme == null;
 	}
+
+	// =================================================================================================================
+	// RECOMPOSITION
+	// =================================================================================================================
 	
 	
 	/**
@@ -336,43 +369,10 @@ public class IRIRef {
 	public String recompose() {
 		return this.recompose(new StringBuilder()).toString();
 	}
-	
-	public String recompose(boolean ansiColor) {
-		StringBuilder builder = new StringBuilder();
-		if (ansiColor) {
-			this.recomposeColor(builder);
-		} else {
-			this.recompose(builder);
-		}
-		return builder.toString();
-	}
-	
-	/**
-	 * Freezes this {@code IRIRef}, marking it as immutable and safe for use in equality
-	 * and hashing operations. Once frozen, the internal state of the IRIRef may no longer
-	 * be modified through resolution, normalization, or path manipulation.
-	 * <p>
-	 * Freezing is only allowed after the IRIRef has been resolved, either explicitly via
-	 * {@link #resolveInPlace(IRIRef, boolean)} or implicitly via {@link #normalizeInPlace()}.
-	 * Attempting to freeze an unresolved IRIRef will result in an exception.
-	 * </p>
-	 *
-	 * @return this {@code IRIRef}, for fluent chaining
-	 * @throws IllegalArgumentException if the IRIRef has not been resolved
-	 * @see #resolveInPlace(IRIRef, boolean)
-	 * @see #normalizeInPlace()
-	 */
-	public IRIRef freeze() {
-		if (! this.isResolved) {
-			throw new IllegalArgumentException("Can only freeze an IRIRef that has been resolved.");
-		}
-		this.isFreezed = true;
-		return this;
-	}
-	
+
 	/**
 	 * Appends the string representation of this IRIRef to the given {@link StringBuilder},
-	 * following the standard IRI recomposition rules from 
+	 * following the standard IRI recomposition rules from
 	 * <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC 3987</a>.
 	 * <p>
 	 * The output includes the scheme, authority, path, query, and fragment, when present.
@@ -400,51 +400,38 @@ public class IRIRef {
 		}
 		return builder;
 	}
-	
-	public void recomposeColor(StringBuilder builder) {
-		builder.append("\u001B[34m");
-		this.recomposeScheme(builder);
-		builder.append("\u001B[35m");
-		if (this.authority != null) {
-			this.authority.recompose(builder);
-		} 
-		builder.append("\u001B[32m");
-		this.path.recompose(builder);
-		builder.append("\u001B[33m");
-		this.recomposeQuery(builder);
-		builder.append("\u001B[31m");
-		this.recomposeFragment(builder);
-		builder.append("\u001B[0m");
+
+
+
+	private void recomposeScheme(StringBuilder builder) {
+		if (this.scheme != null) {
+			builder.append(this.scheme);
+			builder.append(":");
+		}
 	}
-	
-	@Override
-	public boolean equals(Object other) {
-	    if (this == other) return true;
-	    if (other instanceof String s) return recompose().equals(s);
-	    if (other instanceof IRIRef iri) return recompose().equals(iri.recompose());
-	    return false;
+
+
+
+	private void recomposeQuery(StringBuilder builder) {
+		if (this.query != null) {
+			builder.append("?");
+			builder.append(this.query);
+		}
 	}
-	
-	@Override
-	public int hashCode() {
-		return this.recompose().hashCode();
+
+	private void recomposeFragment(StringBuilder builder) {
+		if (this.fragment != null) {
+			builder.append("#");
+			builder.append(this.fragment);
+		}
 	}
-	
-	/**
-	 * Returns the standard string representation of this IRIRef, as defined
-	 * by <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC 3987</a>.
-	 * <p>
-	 * This is equivalent to calling {@link #recompose()} and includes the scheme,
-	 * authority, path, query, and fragment components, when present.
-	 * </p>
-	 *
-	 * @return the IRIRef as a string
-	 */
-	@Override
-	public String toString() {
-	    return this.recompose();
-	}
-	
+
+
+	// =================================================================================================================
+	// RESOLUTION
+	// =================================================================================================================
+
+
 	/**
 	 * Resolves this IRI reference against a given base IRI, following the algorithm 
 	 * defined in <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.2">RFC 3986, Section 5.2</a>.
@@ -478,7 +465,7 @@ public class IRIRef {
 			this.scheme = base.scheme;
 			if (!this.hasAuthority()) {
 				if (base.hasAuthority()) { 
-					this.authority = new IRIAuthority(base.authority);
+					this.authority = IRIAuthority.copy(base.authority);
 				} else {
 					this.authority = null;
 				}
@@ -537,9 +524,22 @@ public class IRIRef {
 	public IRIRef resolve() throws IllegalArgumentException {
 		return new IRIRef(this).resolveInPlace();
 	}
-	
-	
-	public IRIRef relativize2(IRIRef base) throws IllegalArgumentException {
+
+	// =================================================================================================================
+	// RELATIVISATION
+	// =================================================================================================================
+
+
+	public IRIRef relativize(IRIRef base) throws IllegalArgumentException {
+		if (! base.isAbsolute()) {
+			throw new IllegalArgumentException(
+					"IRI relativisation requires an absolute base (with a scheme and no fragment). Provided: "
+							+ base.recompose());
+		}
+		if (this.isRelative()) {
+			throw new IllegalArgumentException(
+					"IRI relativisation requires an IRI (with a scheme). Provided: " + this.recompose());
+		}
 
 		// neither this nor base are relative, so they both have schemes
 		if (! this.scheme.equals(base.scheme))
@@ -557,7 +557,7 @@ public class IRIRef {
 		// when both authorities are null, it is possible that base path is rooted and this path is not
 		// in that case it will be impossible to relativize paths, and thus we have to keep something
 		// before the path, it can only be the scheme
-		if (this.authority == null && base.authority == null && !this.hasRootedPath() && base.hasRootedPath())
+		if (this.authority == null && !this.hasRootedPath() && base.hasRootedPath())
 			return this.copy();
 
 		// FROM NOW WE ARE SURE THAT SCHEMES AND AUTHORITIES ARE EQUAL
@@ -565,11 +565,11 @@ public class IRIRef {
 		boolean mustFindPath = ! this.hasQuery() && base.hasQuery();
 		int maxCost;
 		if (this.hasAuthority())
-			maxCost = this.authority.recompose(new StringBuilder()).length();
+			maxCost = this.authority.recompositionLength();
 		else
-			maxCost = this.scheme.length();
+			maxCost = this.scheme.length() + 1;
 
-		IRIPath newPath = this.path.relativize3(base.path, mustFindPath, maxCost);
+		IRIPath newPath = this.path.relativize(base.path, mustFindPath, maxCost);
 
 		if (newPath == null && !this.hasAuthority())
 			return this.copy();
@@ -577,7 +577,7 @@ public class IRIRef {
 		if (newPath == null)
 			return new IRIRef(null, this.authority, this.path, this.query, this.fragment);
 
-		if (newPath.isEmpty() && ! newPath.isRooted() && this.hasQuery() && this.query.equals(base.query))
+		if (newPath.getSegments().isEmpty() && ! newPath.isRooted() && this.hasQuery() && this.query.equals(base.query))
 			return new IRIRef(null, null, newPath, null, this.fragment);
 
 
@@ -588,117 +588,10 @@ public class IRIRef {
 
 	}
 	
-	
-	
-	
-	public IRIRef relativize(IRIRef base) throws IllegalArgumentException {
-		//if (! this.isResolved || ! base.isResolved) {
-		//	throw new IllegalArgumentException("Can only relativize a resolved IRI against a resolved base.");
-		//}
+	// =================================================================================================================
+	// NORMALISATION (TO DO)
+	// =================================================================================================================
 
-		if (!this.scheme.equals(base.scheme)) // they both have schemes, and they are distinct
-			return this.copy();
-
-		if (this.authority == null && base.authority != null) // cannot remove scheme or base authority would prevail
-			return this.copy();
-
-		if (this.authority == null && base.authority == null && 
-				!this.hasRootedPath() && base.hasRootedPath()) // this = <ex:xxx> and base = <ex:/xxx>
-			return this.copy();
-
-		IRIRef copy = new IRIRef(this); // we know we will change something, so make a copy
-		copy.scheme = null; // since they have equal schemes
-
-		if (!Objects.equals(copy.authority, base.authority))
-			return copy;
-
-		copy.authority = null; // since they have equal (eventually null) authorities
-
-		ListIterator<String> baseIt = base.path.listIterator();
-		ListIterator<String> copyIt = copy.path.listIterator();
-		// Now we iterate along the two paths until they differ, while removing similar segments in copy
-		boolean same = true;
-		String currentBase = null;
-		String currentCopy = null;
-		while(same && baseIt.hasNext() && copyIt.hasNext()) {
-			currentBase = baseIt.next();
-			currentCopy = copyIt.next();
-			if (!currentBase.equals(currentCopy)) {
-				same = false;
-			} else {
-				copyIt.remove();
-			}
-		}
-
-
-		if (same && !baseIt.hasNext() && !copyIt.hasNext()) {
-			if (base.hasRootedPath() == copy.hasRootedPath()) { // those are exactly the same paths, we should remove the copy path
-				if (base.hasQuery() && !copy.hasQuery()) {
-					// TO DO: find a way to have a non empty path in copy
-				} else if (base.hasQuery() && base.query.equals(copy.query)) {
-					copy.query = null;
-					return copy;
-				} // now if base has a query, then copy has a different defined one, nothing to do
-			} else { // only 1 is rooted, so both equal authorities are empty, so we know copy is rooted
-				return copy;
-			}
-		} else if (same && !baseIt.hasNext()) {
-			
-		}
-		
-				// Now either one of the two iterators have no next, or the two strings
-				// are different.
-				
-				
-				if (same && !baseIt.hasNext() && !copyIt.hasNext()) {
-					//System.out.println("AFTER SIMILARITY TRAVERSAL: Both paths are exactly the sames");
-					if (base.hasQuery() && !copy.hasQuery()) {
-						//System.out.println("We have to change something in the authority+path");
-						
-						
-					} else if (base.hasQuery() && base.query.equals(copy.query)) {
-						copy.query = null;
-					}
-				} else if (same && !baseIt.hasNext()) {
-					//System.out.println("AFTER SIMILARITY TRAVERSAL: the result path is longer");
-					if (currentBase  == null) {
-						
-					} else if (currentBase.equals("")) {
-						copyIt.add(".");
-						copyIt.add("");
-					} else {
-						//copy.add(currentBase);
-					}
-				} else if (same && !copyIt.hasNext()) {
-					//System.out.println("AFTER SIMILARITY TRAVERSAL: the base path is longer");
-				} else {
-					//System.out.println("AFTER SIMILARITY TRAVERSAL: the paths differed on Base: " + currentBase + ", result: " + currentCopy);
-				}
-					
-/*
-					if (base.hasQuery() && base.query.equals(result.query)) {
-						result.query = null;
-					} else if (base.hasQuery() && !result.hasQuery()){
-						if (currentBase.equals("") && base.path.size() > 1) {
-							System.out.println("Current is: <" + currentBase + ">");
-							result.path.add(".");
-						} else if (currentBase.equals("")) {
-							System.out.println("HERE");
-						} else {
-							result.path.add(currentBase);
-						}
-					}
-				} else if (same && !baseIt.hasNext()) {
-					System.out.println("Juste garder ce qu'on a ...");
-				}
-				System.out.println("Base: " + currentBase + ", result: " + currentResult);
-			}
-		}*/
-		
-		return copy;
-		
-	}
-	
 	
 	public IRIRef normalize(NORMALIZATION norm) {
 		return  new IRIRef(this).normalizeInPlace(norm);
@@ -710,96 +603,47 @@ public class IRIRef {
 	public IRIRef normalizeInPlace(NORMALIZATION norm) {
 		return this;
 	}
-	
-	
-	
-	
-	
-	
-	
-	
-	private void recomposeScheme(StringBuilder builder) {
-		if (this.scheme != null) {
-			builder.append(this.scheme);
-			builder.append(":");
-		}
-	}
-	
 
-	
-	private void recomposeQuery(StringBuilder builder) {
-		if (this.query != null) {
-			builder.append("?");
-			builder.append(this.query);
+	// =================================================================================================================
+	// FREEZING (TO DO?)
+	// =================================================================================================================
+
+
+	/**
+	 * Freezes this {@code IRIRef}, marking it as immutable and safe for use in equality
+	 * and hashing operations. Once frozen, the internal state of the IRIRef may no longer
+	 * be modified through resolution, normalization, or path manipulation.
+	 * <p>
+	 * Freezing is only allowed after the IRIRef has been resolved, either explicitly via
+	 * {@link #resolveInPlace(IRIRef, boolean)} or implicitly via {@link #normalizeInPlace(NORMALIZATION)}.
+	 * Attempting to freeze an unresolved IRIRef will result in an exception.
+	 * </p>
+	 *
+	 * @return this {@code IRIRef}, for fluent chaining
+	 * @throws IllegalArgumentException if the IRIRef has not been resolved
+	 * @see #resolveInPlace(IRIRef, boolean)
+	 * @see #normalizeInPlace(NORMALIZATION)
+	 */
+	public IRIRef freeze() {
+		if (! this.isResolved) {
+			throw new IllegalArgumentException("Can only freeze an IRIRef that has been resolved.");
 		}
+		this.isFreezed = true;
+		return this;
 	}
-	
-	private void recomposeFragment(StringBuilder builder) {
-		if (this.fragment != null) {
-			builder.append("#");
-			builder.append(this.fragment);
-		}
-	}
-	
-	
-	private void initializeFromMatch(ListMatch match) {
-		String iritype = match.reader().getName();
-		switch (iritype) {
-			case "IRI": {
-				this.fragment = (String) match.result().get(3).result();
-			}
-			case "absolute_IRI" : {
-				this.scheme = (String) match.result().get(0).result();
-				this.query = (String) match.result().get(2).result();
-				this.initializeFromAuthorityPathMatch(match.result().get(1));
-				break;
-			}
-			case "irelative_ref" : {
-				this.query = (String) match.result().get(1).result();
-				this.fragment = (String) match.result().get(2).result();
-				this.initializeFromAuthorityPathMatch(match.result().get(0));
-				break;
-			}
-			default: {
-			    throw new IllegalArgumentException(String.format(
-			        "Unsupported IRI type: \"%s\". Expected one of: IRI, absolute_IRI, irelative_ref.",
-			        iritype
-			    ));
-			}
-		}
-	}
-	
-	private void initializeFromAuthorityPathMatch(IMatch match) throws IllegalArgumentException {
-		String iritype = match.reader().getName();
-		switch(iritype) {
-			case "_seq_ihier_part": {
-				this.authority = new IRIAuthority((ListMatch)((ListMatch)match).result().get(0));
-				this.path.addFromMatch(((ListMatch)match).result().get(1));
-				break;
-			}
-			default : {
-				this.path.addFromMatch(match);
-			}
-		}
-	}
-	
-	
-	
-	private void initializeFromFields(String scheme, String user, String host, Integer port, boolean rooted, List<String> path, String query, String fragment) {
-		// Here I should match the parameters against the parser...
-		this.scheme = scheme;
-		this.authority = new IRIAuthority(user, host, port);
-		this.path.addAll(path);
-		this.path.setRooted(rooted);
-		this.query = query;
-		this.fragment = fragment;
-	}
+
+
+
+
+	// =================================================================================================================
+	// TESTS
+	// =================================================================================================================
 
 	private static void check(String base, String target) {
 		IRIRef iribase   = new IRIRef(base);
 		IRIRef iritarget = new IRIRef(target);
 
-		IRIRef relativized = iritarget.relativize2(iribase);
+		IRIRef relativized = iritarget.relativize(iribase);
 		String relStr      = relativized.recompose();
 		IRIRef resolved    = relativized.resolve(iribase);
 		String resStr      = resolved.recompose();
@@ -833,6 +677,34 @@ public class IRIRef {
 		check("http:?q",          "http:#f");
 		check("http://a/b",       "https://a/b");
 		check("http://a.example.com/path/x", "http://b.example.com/path/y");
+
+		check("http:a/b/c?q=x",    "http:a/b/c");
+		check("http:a?q=x",    "http:a");
+		check("http://host/a/b?q=x",    "http://host/a/b");
+		check("http://host/a/b/?q=x",    "http://host/a/b");
+		check("http:?q=x",    "http:");
+		check("http:/a/b?q=x", "http:/a/b?q=y");
+		check("http:a/b?q=x",  "http:a/b?q=y");
+
+		check("http:a/b?q=x", "http:a/b");
+		check("http:a/b?q=x", "http:a/b/");
+		check("http:a/b/?q=x", "http:a/b");
+		check("http:?q=x", "http:");
+		check("http:/?q=x", "http:");
+		check("http:q=x", "http:/");
+
+		check("http:/a/b/c/d/e/f",  "http:/g");
+		check("http:/a/b/c/d/e/f",  "http:/a/g");
+
+		check("http:a/b/c/d/e/f/g/h/i",  "http:a");
+
+		check("http://example.org/rosé;" ,  "http://example.org/");
+
+		check("http://host/a", "http://host/");
+		check("http://host/a/b", "http://host/a/");
+		check("http://host/a/b",  "http://host/a//b/");
+
+		System.out.println(new IRIRef("/b/").resolve(new IRIRef("http://host/a/b")).recompose());
 
 
 
