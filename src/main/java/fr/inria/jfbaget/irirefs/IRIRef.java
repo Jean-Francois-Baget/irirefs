@@ -704,6 +704,8 @@ IRIRef {
 		check("http://host/a/b", "http://host/a/");
 		check("http://host/a/b",  "http://host/a//b/");
 
+		check("http://host/",  "http://host/");
+
 		System.out.println(new IRIRef("/b/").resolve(new IRIRef("http://host/a/b")).recompose());
 
 
