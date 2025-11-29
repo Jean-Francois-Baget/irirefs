@@ -250,7 +250,7 @@ class IRIRefTest {
         for (List<String> input : inputs) {
             IRIRef iri = new IRIRef(input.get(0));
             String result = iri.resolveInPlace(base).recompose();
-            assertEquals(result, input.get(1));
+            assertEquals(input.get(1), result);
         }
     }
 
@@ -273,6 +273,7 @@ class IRIRefTest {
 
     }
 
+    @Test
     void testResolution2() {
         List<List<String>> inputs = List.of(
                 List.of("http://www.lirmm.fr/me?query", "#bar", "http://www.lirmm.fr/me?query#bar"),

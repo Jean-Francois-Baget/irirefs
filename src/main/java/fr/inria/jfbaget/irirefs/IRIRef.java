@@ -325,9 +325,9 @@ IRIRef {
 		return this.query != null;
 	}
 	
-	public boolean hasEmptyPath() {
-		return this.path.getSegments().isEmpty();
-	}
+	//public boolean hasEmptyPath() {
+	//	return this.path.getSegments().isEmpty();
+	//}
 	
 	public boolean hasRootedPath() {
 		return this.path.isRooted();
@@ -469,8 +469,8 @@ IRIRef {
 				} else {
 					this.authority = null;
 				}
-				if (!this.path.isRooted() && this.hasEmptyPath()) {
-					this.path.resolveEmptyPath(base.path);
+				if (this.path.isEmpty()) {
+					this.path.copyInPlace(base.path);
 					if (this.query == null) {
 						this.query = base.query;
 					}
@@ -541,16 +541,10 @@ IRIRef {
 					"IRI relativisation requires an IRI (with a scheme). Provided: " + this.recompose());
 		}
 
-		// neither this nor base are relative, so they both have schemes
-		if (! this.scheme.equals(base.scheme))
+		if (! this.scheme.equals(base.scheme) || (this.authority == null && base.authority != null))
 			return this.copy();
 
-		// cannot remove this scheme or base authority would prevail
-		if (this.authority == null && base.authority != null)
-			return this.copy();
-
-		// if authorities differ (and then we are sure that this.authority is not null)
-		// then we just have to remove the scheme
+		// if authorities differ (and we are sure that this.authority is not null), remove the scheme
 		if (this.authority != null && ! this.authority.equals(base.authority))
 			return new IRIRef(null, this.authority, this.path, this.query, this.fragment);
 
@@ -582,10 +576,6 @@ IRIRef {
 
 
 		return new IRIRef(null, null, newPath, this.query, this.fragment);
-
-
-
-
 	}
 	
 	// =================================================================================================================
@@ -659,6 +649,8 @@ IRIRef {
 	}
 
 	public static void main(String[] args) {
+		check("http:", "http:");
+
 		check("http:/a", "http:/");
 
 		check("http:a/b/c/",       "http:a/b/c/d/e/f");
@@ -706,7 +698,6 @@ IRIRef {
 
 		check("http://host/",  "http://host/");
 
-		System.out.println(new IRIRef("/b/").resolve(new IRIRef("http://host/a/b")).recompose());
 
 
 
