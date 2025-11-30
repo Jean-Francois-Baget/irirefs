@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 
 class IRIRefTest {
 
+    private static final boolean DISPLAY = false;
+
     @Test
     void testRecomposition() {
         List<String> inputs = List.of(
@@ -372,5 +374,106 @@ class IRIRefTest {
         assertEquals("http://a/b/c/g", result);
     }
 
+    @Test
+    void testRelativization() {
+        List<List<String>> data = List.of(
+                List.of("http:", "http:"),
+                List.of("http:/", "http:/"),
+                List.of("http:a", "http:a"),
+                List.of("http:/a", "http:/a"),
+                List.of("http:a/", "http:a/"),
+                List.of("http:/a/", "http:/a/"),
+
+                List.of("http:", "http:"),
+                List.of("http:/", "http:/"),
+                List.of("http:/", "http:"),
+                List.of("http:", "http:/"),
+
+                List.of("http:/a", "http:/a"),
+                List.of("http:a", "http:a"),
+                List.of("http:/a", "http:/"),
+                List.of("http:/", "http:/a"),
+
+
+
+                List.of("http:/a/", "http:/"),
+                List.of("http:a/b/c/",       "http:a/b/c/d/e/f"),
+                List.of("http:a/b/c",       "http:a/b/c/d/e/f"),
+                List.of("http:a/b/c/d/e/f", "http:a/b/c"),
+                List.of("http:a/b/c/d/e/f", "http:a/b/c/g/h/i"),
+                List.of("http:a/b/c",       "http:a/b"),
+                List.of("http:/a/b",        "http:/a/b"),
+                List.of("http:/a/b/",        "http:/a/b/"),
+                List.of("http:/a/b/",        "http:/a/b"),
+                List.of("http:/a/b?q=x",    "http:/a/b?q=x"),
+                List.of("http:/a/b?q=x",    "http:/a/b#frag"),
+                List.of("http:/a/b/?q=x",    "http:/a/b/#frag"),
+                List.of("http:?q=x",    "http:#frag"),
+                List.of("http:/a/b?q=x",    "http:/a/b"),
+                List.of("http:?q",          "http:#f"),
+                List.of("http://a/b",       "https://a/b"),
+
+                List.of("http://a.example.com/path/x", "http://b.example.com/path/y"),
+
+                List.of("http:a/b/c?q=x",    "http:a/b/c"),
+                List.of("http:a?q=x",    "http:a"),
+                List.of("http://host/a/b?q=x",    "http://host/a/b"),
+                List.of("http://host/a/b/?q=x",    "http://host/a/b"),
+                List.of("http:?q=x",    "http:"),
+                List.of("http:/a/b?q=x", "http:/a/b?q=y"),
+                List.of("http:a/b?q=x",  "http:a/b?q=y"),
+
+                List.of("http:a/b?q=x", "http:a/b"),
+                List.of("http:a/b?q=x", "http:a/b/"),
+                List.of("http:a/b/?q=x", "http:a/b"),
+                List.of("http:?q=x", "http:"),
+                List.of("http:/?q=x", "http:"),
+                List.of("http:q=x", "http:/"),
+
+                List.of("http:/a/b/c/d/e/f",  "http:/g"),
+                List.of("http:/a/b/c/d/e/f",  "http:/a/g"),
+
+                List.of("http:a/b/c/d/e/f/g/h/i",  "http:a"),
+
+                List.of("http://example.org/rosé;" ,  "http://example.org/"),
+
+                List.of("http://host/a", "http://host/"),
+                List.of("http://host/a/b", "http://host/a/"),
+                List.of("http://host/a/b",  "http://host/a//b/"),
+                List.of("veryverylongscheme:a/b/c/d/e", "veryverylongscheme:a//b/"),
+
+                List.of("http://host/",  "http://host/"),
+
+                List.of("http:?q", "http:#f"),
+
+                List.of("http:a", "http:a/b")
+        );
+        for (int index = 0; index < data.size(); index++) {
+            IRIRef iribase   = new IRIRef(data.get(index).get(0));
+            IRIRef iritarget = new IRIRef(data.get(index).get(0));
+
+            IRIRef relativized = iritarget.relativize(iribase);
+            String relStr      = relativized.recompose();
+            IRIRef resolved    = relativized.resolve(iribase);
+            String resStr      = resolved.recompose();
+
+            assertEquals(iritarget, resStr);
+            assertTrue(relativized.recompose().length() <= iritarget.recompose().length());
+
+            if (DISPLAY) {
+                System.out.println("=====================\nTest " + index + "\n\"=====================");
+                System.out.println("Base      : " + iribase);
+                System.out.println("Target    : " + iritarget);
+                System.out.println("Relative  : " + relStr);
+                System.out.println("Resolved  : " + resStr);
+                if (!resStr.equals(iritarget.recompose())) {
+                    System.out.println("❌ FAILED: resolve(relativize(target, base), base) != target");
+                }
+                System.out.println();
+            }
+
+        }
+
+    }
 
 }

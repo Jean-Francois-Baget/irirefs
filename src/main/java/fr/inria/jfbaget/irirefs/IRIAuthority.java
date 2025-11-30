@@ -4,7 +4,41 @@ import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 
 import java.util.Objects;
 
-
+/**
+ * Represents the <em>authority</em> component of an IRI, as defined in RFC 3986
+ * and RFC 3987.
+ * <p>
+ * In the IRI syntax, the authority appears (when present) after the scheme and
+ * {@code "//"}, and before the path:
+ *
+ * <pre>
+ *   scheme "://" [ user "@" ] host [ ":" port ]
+ * </pre>
+ *
+ * This class stores the three logical parts:
+ * <ul>
+ *   <li>{@code user} – the optional userinfo (without the trailing {@code '@'}),</li>
+ *   <li>{@code host} – the host or IP-literal (already in canonical string form,
+ *       e.g. {@code "example.org"} or {@code "[2001:db8::1]"}),</li>
+ *   <li>{@code port} – the optional port number, or {@code null} if absent.</li>
+ * </ul>
+ *
+ * <p>It is package-private on purpose: end users work with {@code IRIRef},
+ * which exposes higher-level getters such as {@code getHost()} and a
+ * recomposed string form. {@code IRIAuthority} is an internal helper for
+ * parsing, resolution and recomposition.
+ *
+ * <p>Important invariants:
+ * <ul>
+ *   <li>If there is <strong>no authority at all</strong>, the {@code IRIRef}
+ *       instance holds {@code authority == null}.</li>
+ *   <li>If there is an <strong>empty authority</strong> (e.g. {@code "file:///…"}),
+ *       then an {@code IRIAuthority} exists with {@code host == ""}.</li>
+ *   <li>Recomposition via {@link #recompose()} always yields the exact textual
+ *       authority part (without the leading {@code "//"}), suitable for
+ *       insertion into the full IRI.</li>
+ * </ul>
+ */
 class IRIAuthority {
 	
 	private String user = null;
@@ -21,7 +55,6 @@ class IRIAuthority {
 
 	IRIAuthority(ListMatch authorityMatch) {
 		this.user = (String) authorityMatch.result().get(0).result();
-		//System.out.println(authorityMatch.result().get(1).reader().getName());
 		this.host = (String) authorityMatch.result().get(1).result();
 		this.port = (Integer) authorityMatch.result().get(2).result();
 	}

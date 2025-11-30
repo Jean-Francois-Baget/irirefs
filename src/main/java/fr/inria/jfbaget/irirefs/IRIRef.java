@@ -10,8 +10,7 @@ import fr.inria.jfbaget.nanoparse.IMatch;
 import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 
 
-public class
-IRIRef {
+public class IRIRef {
 	
 	private String scheme = null;
 	private IRIPath path = null; // Voir plus tard avec constructeur vide
@@ -469,7 +468,7 @@ IRIRef {
 				} else {
 					this.authority = null;
 				}
-				if (this.path.isEmpty()) {
+				if (this.path.isEmptyPath()) {
 					this.path.copyInPlace(base.path);
 					if (this.query == null) {
 						this.query = base.query;
@@ -625,78 +624,10 @@ IRIRef {
 
 
 
-	// =================================================================================================================
-	// TESTS
-	// =================================================================================================================
-
-	private static void check(String base, String target) {
-		IRIRef iribase   = new IRIRef(base);
-		IRIRef iritarget = new IRIRef(target);
-
-		IRIRef relativized = iritarget.relativize(iribase);
-		String relStr      = relativized.recompose();
-		IRIRef resolved    = relativized.resolve(iribase);
-		String resStr      = resolved.recompose();
-
-		System.out.println("Base      : " + base);
-		System.out.println("Target    : " + target);
-		System.out.println("Relative  : " + relStr);
-		System.out.println("Resolved  : " + resStr);
-		if (!resStr.equals(target)) {
-			System.out.println("❌ FAILED: resolve(relativize(target, base), base) != target");
-		}
-		System.out.println();
-	}
-
 	public static void main(String[] args) {
-		check("http:", "http:");
 
-		check("http:/a", "http:/");
 
-		check("http:a/b/c/",       "http:a/b/c/d/e/f");
-		check("http:a/b/c",       "http:a/b/c/d/e/f");
-		check("http:a/b/c/d/e/f", "http:a/b/c");
-		check("http:a/b/c/d/e/f", "http:a/b/c/g/h/i");
-		check("http:a/b/c",       "http:a/b");
-		check("http:/a/b",        "http:/a/b");
-		check("http:/a/b/",        "http:/a/b/");
-		check("http:/a/b/",        "http:/a/b");
-		check("http:/a/b?q=x",    "http:/a/b?q=x");
-		check("http:/a/b?q=x",    "http:/a/b#frag");
-		check("http:/a/b/?q=x",    "http:/a/b/#frag");
-		check("http:?q=x",    "http:#frag");
-		check("http:/a/b?q=x",    "http:/a/b");
-		check("http:?q",          "http:#f");
-		check("http://a/b",       "https://a/b");
-		check("http://a.example.com/path/x", "http://b.example.com/path/y");
-
-		check("http:a/b/c?q=x",    "http:a/b/c");
-		check("http:a?q=x",    "http:a");
-		check("http://host/a/b?q=x",    "http://host/a/b");
-		check("http://host/a/b/?q=x",    "http://host/a/b");
-		check("http:?q=x",    "http:");
-		check("http:/a/b?q=x", "http:/a/b?q=y");
-		check("http:a/b?q=x",  "http:a/b?q=y");
-
-		check("http:a/b?q=x", "http:a/b");
-		check("http:a/b?q=x", "http:a/b/");
-		check("http:a/b/?q=x", "http:a/b");
-		check("http:?q=x", "http:");
-		check("http:/?q=x", "http:");
-		check("http:q=x", "http:/");
-
-		check("http:/a/b/c/d/e/f",  "http:/g");
-		check("http:/a/b/c/d/e/f",  "http:/a/g");
-
-		check("http:a/b/c/d/e/f/g/h/i",  "http:a");
-
-		check("http://example.org/rosé;" ,  "http://example.org/");
-
-		check("http://host/a", "http://host/");
-		check("http://host/a/b", "http://host/a/");
-		check("http://host/a/b",  "http://host/a//b/");
-
-		check("http://host/",  "http://host/");
+		System.out.println(new IRIRef(".").resolve(new IRIRef("http:/a")).recompose());
 
 
 
