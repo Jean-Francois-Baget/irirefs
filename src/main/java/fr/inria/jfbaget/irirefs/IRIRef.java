@@ -6,6 +6,7 @@ import fr.inria.jfbaget.irirefs.parser.IRIRefParser;
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
 
 import fr.inria.jfbaget.irirefs.parser.IRIRefValidator;
+import fr.inria.jfbaget.irirefs.preparator.StringPreparator;
 import fr.inria.jfbaget.nanoparse.IMatch;
 import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 
@@ -96,27 +97,27 @@ public class IRIRef {
 	// =================================================================================================================
 
 	public IRIRef(String iriString) throws IRIParseException {
-		this(iriString, IRITYPE.ANY);
+		this(iriString, IRITYPE.ANY, null);
 	}
 
 	public IRIRef(String iriString, IRITYPE type) throws IRIParseException {
-		this(parse(iriString, type));
+		this(iriString, type, null);
 	}
 
-	public IRIRef(IRIRef other) {
-		this.scheme = other.scheme;
-		this.authority = (other.authority == null)? null: new IRIAuthority(other.authority);
-		this.path = new IRIPath(other.path);
-		this.query = other.query;
-		this.fragment = other.fragment;
-		this.isResolved = other.isResolved;
-		this.isNormalized = other.isNormalized;
-		this.isFreezed = false;
+	public IRIRef(String iriString, StringPreparator preparator) throws IRIParseException {
+		this(iriString, IRITYPE.ANY, preparator);
 	}
 
-	private static ListMatch parse(String iriString, IRITYPE type) throws IRIParseException {
-		IMatch iriMatch = parser.read(iriString, 0, type.getRuleName());
-		if (!iriMatch.success() || iriMatch.end() != iriString.length()) {
+	public IRIRef(String iriString, IRITYPE type, StringPreparator preparator) throws IRIParseException {
+		this(IRIRef.parse(iriString, type, preparator));
+	}
+
+
+	private static ListMatch parse(String iriString, IRITYPE type, StringPreparator preparator) throws IRIParseException {
+		String prepedIriString = (preparator == null)? iriString : preparator.transform(iriString);
+
+		IMatch iriMatch = parser.read(prepedIriString, 0, type.getRuleName());
+		if (!iriMatch.success() || iriMatch.end() != prepedIriString.length()) {
 			throw new IRIParseException(String.format(
 					"The string \"%s\" does not represent a valid %s, stopped parsing at position %d.",
 					iriString, type.getRuleName(), iriMatch.end()));
@@ -159,6 +160,18 @@ public class IRIRef {
 		}
 	}
 
+	public IRIRef(IRIRef other) {
+		this.scheme = other.scheme;
+		this.authority = (other.authority == null)? null: new IRIAuthority(other.authority);
+		this.path = new IRIPath(other.path);
+		this.query = other.query;
+		this.fragment = other.fragment;
+		this.isResolved = other.isResolved;
+		this.isNormalized = other.isNormalized;
+		this.isFreezed = false;
+	}
+
+
 	private IRIRef(String scheme, IRIAuthority authority, IRIPath path, String query, String fragment) {
 		this.scheme = scheme;
 		this.authority = authority;
@@ -168,21 +181,6 @@ public class IRIRef {
 	}
 
 
-	/*
-
-	
-	public IRIRef(String scheme, String user, String host, int port, boolean rooted, List<String> path, String query, String fragment) {
-		this.scheme = scheme;
-		if (user != null || host != null ||  port >= 0) {
-			this.authority = new IRIAuthority(user, host, port);
-		}
-		// RAJOUTER VERIFICATION DE PATH
-		this.path = new IRIPath(rooted, path);
-		this.query = query;
-		this.fragment = fragment;
-	}
-
-	 */
 
 	// =================================================================================================================
 	// UTILS
@@ -625,11 +623,6 @@ public class IRIRef {
 
 
 	public static void main(String[] args) {
-
-
-		System.out.println(new IRIRef(".").resolve(new IRIRef("http:/a")).recompose());
-
-
 
 
 	}

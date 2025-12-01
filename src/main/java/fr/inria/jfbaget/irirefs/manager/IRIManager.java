@@ -10,7 +10,7 @@ import fr.inria.jfbaget.irirefs.IRIRef.IRITYPE;
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
 import fr.inria.jfbaget.irirefs.manager.formatter.DLGPFormatter;
 import fr.inria.jfbaget.irirefs.manager.formatter.IFormatter;
-import fr.inria.jfbaget.irirefs.manager.normalizer.BasicNormalizer;
+//import fr.inria.jfbaget.irirefs.manager.normalizer.BasicNormalizer;
 import fr.inria.jfbaget.irirefs.manager.normalizer.INormalizer;
 
 /**
@@ -106,7 +106,7 @@ public class IRIManager implements IManager{
      * @see IRITYPE#ABS
      */
     public IRIManager(String iriString) throws IRIParseException{
-    	this.normalizer = new BasicNormalizer();
+    	//this.normalizer = new BasicNormalizer();
     	this.formatter = new DLGPFormatter();
         this.base = this.normalizer.normalize(new IRIRef(iriString, IRIRef.IRITYPE.ABS).resolve());
         this.prefixes = new HashMap<>();

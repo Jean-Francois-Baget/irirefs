@@ -193,6 +193,65 @@ final class IRIPath {
 		return this;
 	}
 
+	/**
+	 * Returns the textual form of this path, as it would appear in an IRI.
+	 * <p>
+	 * This is equivalent to {@link #recompose()} and uses the internal
+	 * canonical segment encoding, so that:
+	 * <ul>
+	 *   <li>{@code [""]}        → {@code ""}</li>
+	 *   <li>{@code ["", ""]}    → {@code "/"}</li>
+	 *   <li>{@code ["", "a"]}   → {@code "/a"}</li>
+	 *   <li>{@code ["a", "b"]}  → {@code "a/b"}</li>
+	 *   <li>{@code ["a", "", "b"]} → {@code "a//b"}</li>
+	 * </ul>
+	 */
+	@Override
+	public String toString() {
+		return recompose();
+	}
+
+	/**
+	 * Compares this {@code IRIPath} to another object for structural equality.
+	 * <p>
+	 * Paths are considered equal if and only if:
+	 * <ul>
+	 *   <li>the other object is also an {@code IRIPath}, and</li>
+	 *   <li>their canonical segment lists are equal (same size, same elements in order).</li>
+	 * </ul>
+	 *
+	 * <p>Because {@link IRIPath} uses a unique internal encoding:
+	 * <ul>
+	 *   <li>{@code [""]}        → {@code ""}</li>
+	 *   <li>{@code ["", ""]}    → {@code "/"}</li>
+	 *   <li>{@code ["", "a"]}   → {@code "/a"}</li>
+	 *   <li>{@code ["a", "b"]}  → {@code "a/b"}</li>
+	 *   <li>{@code ["a", "", "b"]} → {@code "a//b"}</li>
+	 * </ul>
+	 * equality on {@code segments} implies equality of the recomposed textual
+	 * path as well (via {@link #recompose()}).
+	 */
+	@Override
+	public boolean equals(Object other) {
+		if (this == other) return true;
+		if (other == null || getClass() != other.getClass()) return false;
+		IRIPath that = (IRIPath) other;
+		return Objects.equals(this.segments, that.segments);
+	}
+
+	/**
+	 * Computes a hash code consistent with {@link #equals(Object)}.
+	 * <p>
+	 * The hash code is derived solely from the canonical segment list, so that
+	 * two {@code IRIPath} instances that are equal (same segments in the same
+	 * order) will always have the same hash code. This makes {@code IRIPath}
+	 * suitable for use as a key in hash-based collections.
+	 */
+	@Override
+	public int hashCode() {
+		return Objects.hash(segments);
+	}
+
 	// =================================================================================================================
 	// GETTERS
 	// =================================================================================================================

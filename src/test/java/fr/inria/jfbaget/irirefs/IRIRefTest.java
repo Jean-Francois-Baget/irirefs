@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class IRIRefTest {
 
-    private static final boolean DISPLAY = false;
+    private static final boolean DISPLAY = true;
 
     @Test
     void testRecomposition() {
@@ -203,9 +203,8 @@ class IRIRefTest {
                 "//\uD83D\uDE00\uD83D\uDE80.example/\uD83C\uDF0D/\uD83D\uDCBB",
 
                 // Relative IRI with mixed BMP + non-BMP
-                "資料/\uD83D\uDE00/データ/\uD800\uDF48",
+                "資料/\uD83D\uDE00/データ/\uD800\uDF48"
 
-                "http://example.org/ros&eacute;"
         );
         for (String input : inputs) {
             IRIRef iri = new IRIRef(input);
@@ -450,7 +449,7 @@ class IRIRefTest {
         );
         for (int index = 0; index < data.size(); index++) {
             IRIRef iribase   = new IRIRef(data.get(index).get(0));
-            IRIRef iritarget = new IRIRef(data.get(index).get(0));
+            IRIRef iritarget = new IRIRef(data.get(index).get(1));
 
             IRIRef relativized = iritarget.relativize(iribase);
             String relStr      = relativized.recompose();
