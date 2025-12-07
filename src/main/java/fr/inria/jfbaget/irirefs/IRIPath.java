@@ -3,35 +3,138 @@ package fr.inria.jfbaget.irirefs;
 
 import java.util.*;
 
+import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
 import fr.inria.jfbaget.nanoparse.IMatch;
 import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 import fr.inria.jfbaget.nanoparse.matches.StringMatch;
 
-public final class IRIPath {
+/**
+ * Internal representation of the path component of an IRI, as defined by
+ * <a href="https://datatracker.ietf.org/doc/html/rfc3986">RFC&nbsp;3986</a>
+ * and <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC&nbsp;3987</a>.
+ * <p>
+ * The path is modeled as a unique non-empty list of string segments such that
+ * joining them with {@code "/"} yields the textual representation of the path:
+ * </p>
+ *
+ * <pre>
+ *   recompose().equals(String.join("/", segments))
+ * </pre>
+ *
+ * <h2>Canonical encoding</h2>
+ * The following invariants are enforced:
+ * <ul>
+ *   <li>The list {@code segments} is never {@code null} and never empty.</li>
+ *   <li>The empty path is encoded as a single empty segment: {@code [""]}.</li>
+ *   <li>A rooted path (starting with {@code "/"}) has at least two segments and
+ *       the first one is empty:
+ *     <ul>
+ *       <li>{@code "/"}        → {@code ["", ""]}</li>
+ *       <li>{@code "/a/b"}     → {@code ["", "a", "b"]}</li>
+ *       <li>{@code "/a/b/"}    → {@code ["", "a", "b", ""]}</li>
+ *     </ul>
+ *   </li>
+ *   <li>A non-rooted path has a non-empty first segment:
+ *     <ul>
+ *       <li>{@code "a/b"}      → {@code ["a", "b"]}</li>
+ *       <li>{@code "a/b/"}     → {@code ["a", "b", ""]}</li>
+ *       <li>{@code "a//b"}     → {@code ["a", "", "b"]}</li>
+ *     </ul>
+ *   </li>
+ * </ul>
+ *
+ * <p>
+ * With this canonical representation, rootedness and emptiness are fully
+ * determined by the first segment and the list size; no extra flags are needed.
+ * All recomposition methods ({@link #recompose()} and
+ * {@link #recompose(StringBuilder)}) operate directly on {@code segments}.
+ * </p>
+ *
+ * <h2>Operations</h2>
+ * This class provides:
+ * <ul>
+ *   <li>Recomposition of the path into its string form
+ *       ({@link #recompose()}, {@link #recompose(StringBuilder)}).</li>
+ *   <li>Dot-segment normalization according to RFC&nbsp;3986
+ *       section&nbsp;5.2.4 ({@link #removeDotSegments()}).</li>
+ *   <li>Resolution of a relative path against a base path
+ *       (used by {@code IRIRef.resolve}, via
+ *       {@link #resolveNonEmptyPath(IRIPath, boolean)}).</li>
+ *   <li>Relativization of one path against another
+ *       ({@link #relativize(IRIPath, boolean, int)}), used as part of
+ *       computing the shortest “reasonable” relative reference between two IRIs.</li>
+ *   <li>Length estimation for recomposition
+ *       ({@link #recompositionLength()}, {@link #recompositionLength(java.util.List)}),
+ *       used in heuristics such as “is this relative form actually shorter?”.</li>
+ * </ul>
+ *
+ * <h2>Scope and mutability</h2>
+ * <ul>
+ *   <li>{@code IRIPath} is package-private and is not part of the public API.</li>
+ *   <li>Instances are mutable and are intended to be manipulated only by
+ *       {@link IRIRef} and related classes within this package.</li>
+ *   <li>No thread-safety guarantees are provided.</li>
+ *   <li>The {@link #getSegments()} method exposes an unmodifiable view of the
+ *       canonical segment list; callers must not rely on any particular list
+ *       implementation.</li>
+ * </ul>
+ */
+
+final class IRIPath {
 	
 	private static final String EMPTY_SEGMENT = "";
 	private static final String DOT_SEGMENT = ".";
 	private static final String DOUBLEDOT_SEGMENT = "..";
 	private static final String SEGMENT_SEPARATOR = "/";
-	
-	private boolean rooted;
+
     private final LinkedList<String> segments;
-    
-    private static final boolean DEBUG_DOT_SEGMENTS = false;
 
 
 	// =================================================================================================================
 	// CONSTRUCTORS
 	// =================================================================================================================
 
+	/**
+	 * Builds a canonical {@code IRIPath} from a parser match of one of the
+	 * {@code ipath_*} rules (RFC&nbsp;3986 / RFC&nbsp;3987).
+	 * <p>
+	 * This constructor interprets the parse tree and populates {@link #segments}
+	 * according to the internal encoding invariants described in the class Javadoc:
+	 * </p>
+	 * <ul>
+	 *   <li>For {@code ipath_abempty}, the path is considered rooted if at least
+	 *       one segment is present (a leading {@code "/"} is parsed), and the
+	 *       segments are taken as they appear in the grammar.</li>
+	 *   <li>For {@code ipath_absolute}, {@code ipath_rootless} and
+	 *       {@code ipath_noscheme}, the first segment is extracted separately,
+	 *       then the remaining segments are appended from the list match.</li>
+	 *   <li>For {@code ipath_empty}, no segment is produced by the grammar;
+	 *       the canonical encoding of the empty path is added afterwards.</li>
+	 * </ul>
+	 * <p>
+	 * After the switch:
+	 * </p>
+	 * <ul>
+	 *   <li>If no segment was produced, the empty path is encoded as
+	 *       {@code [""]}.</li>
+	 *   <li>If the path is rooted (a leading {@code "/"} was present in the
+	 *       syntax), an empty segment is inserted at the beginning to encode
+	 *       the leading slash, so that rooted paths always start with an empty
+	 *       segment.</li>
+	 * </ul>
+	 *
+	 * @param pathMatch a successful match of an {@code ipath_*} rule from the parser
+	 * @throws AssertionError if the match does not correspond to a supported path rule
+	 */
 	IRIPath(IMatch pathMatch) {
-		this.rooted = false;
+		boolean rooted = false;  // whether the parsed syntax had a leading "/"
 		this.segments = new LinkedList<>();
 		switch (pathMatch.reader().getName()) {
 			case "ipath_abempty" : {
+				@SuppressWarnings("unchecked")
 				List<StringMatch> segMatches = (List<StringMatch>)pathMatch.result();
 				if (segMatches != null){
-					this.rooted = true;
+					rooted = true;
 					for (StringMatch segmatch : segMatches) {
 						this.segments.add((String)segmatch.result());
 					}
@@ -39,16 +142,17 @@ public final class IRIPath {
 				break;
 			}
 			case "_opt_ipath_absolute": {
-				this.rooted = true;
+				rooted = true;
 				break;
 			}
 			case "_seq_ipath_absolute" : {
-				this.rooted = true;
+				rooted = true;
 				// fallthrough: same segments structure as rootless and noscheme
 			}
 			case "ipath_rootless": {}
 			case "ipath_noscheme": {
 				this.segments.add((String)((ListMatch)pathMatch).result().get(0).result());
+				@SuppressWarnings("unchecked")
 				List<StringMatch> segMatches = (List<StringMatch>)((ListMatch)pathMatch).result().get(1).result();
 				if (segMatches != null){
 					for (StringMatch segmatch : segMatches) {
@@ -58,24 +162,54 @@ public final class IRIPath {
 				break;
 			}
 			case "ipath_empty" : {
+				// no segments; handled by canonicalization below
 				break;
 			}
 			default:
 				throw new AssertionError("No such rule for an IRI path, given " + pathMatch.reader().getName());
 		}
+		// Canonicalize internal representation
+		if (this.segments.isEmpty()) {
+			// Empty path => [""].
+			this.segments.addFirst(EMPTY_SEGMENT);
+		}
+		if (rooted){
+			// Rooted path => insert leading "" segment to encode the '/'.
+			this.segments.addFirst(EMPTY_SEGMENT);
+		}
 	}
 
-    IRIPath(boolean rooted, List<String> initialSegments) {
-    	this.rooted = rooted;
-		if (initialSegments.size() == 1 && initialSegments.get(0).equals(EMPTY_SEGMENT)) {
-			initialSegments.remove(0);
-			System.out.println("REDONDANCE");
-		}
+	/**
+	 * Low-level constructor from an already canonical list of segments.
+	 * <p>
+	 * This constructor assumes that {@code initialSegments} already satisfies
+	 * the internal encoding invariants of {@link IRIPath} (non-empty list,
+	 * first segment encoding rootedness/emptiness, etc.).
+	 * No additional validation is performed.
+	 * </p>
+	 * <p>
+	 * The list is copied into an internal {@link LinkedList}, so subsequent
+	 * modifications to {@code initialSegments} do not affect this path.
+	 * </p>
+	 *
+	 * @param initialSegments canonical segment list to copy into this path
+	 */
+    private IRIPath(List<String> initialSegments) {
         this.segments = new LinkedList<>(initialSegments);
     }
 
+	/**
+	 * Copy constructor.
+	 * <p>
+	 * Creates a new {@code IRIPath} with the same canonical segments as
+	 * {@code other}. The segment list itself is copied, so subsequent mutations
+	 * to this path do not affect {@code other}, and vice versa. Individual
+	 * segment strings are not cloned (strings are immutable).
+	 * </p>
+	 *
+	 * @param other path to copy; must not be {@code null}
+	 */
 	IRIPath(IRIPath other) {
-		this.rooted = other.rooted;
 		this.segments = new LinkedList<>(other.segments);
 	}
 
@@ -83,113 +217,425 @@ public final class IRIPath {
 	// UTILS
 	// =================================================================================================================
 
+	/**
+	 * Overwrites this path's segments with those of {@code other}, keeping
+	 * the same {@code IRIPath} instance.
+	 * <p>
+	 * This is a low-level, in-place copy operation intended for internal use
+	 * by {@link IRIRef} and related classes. It preserves all canonical
+	 * invariants because {@code other.segments} is assumed to already be in
+	 * canonical form.
+	 * </p>
+	 *
+	 * @param other the source path whose segments should replace this path's segments
+	 * @return this {@code IRIPath}, for method chaining
+	 */
+	IRIPath copyInPlace(IRIPath other) {
+		this.segments.clear();
+		this.segments.addAll(other.segments);
+		return this;
+	}
+
+	/**
+	 * Returns the textual form of this path, as it would appear in an IRI.
+	 * <p>
+	 * This is equivalent to {@link #recompose()} and uses the internal
+	 * canonical segment encoding, so that for example:
+	 * </p>
+	 * <ul>
+	 *   <li>{@code [""]}              → {@code ""}</li>
+	 *   <li>{@code ["", ""]}          → {@code "/"}</li>
+	 *   <li>{@code ["", "a"]}         → {@code "/a"}</li>
+	 *   <li>{@code ["a", "b"]}        → {@code "a/b"}</li>
+	 *   <li>{@code ["a", "", "b"]}    → {@code "a//b"}</li>
+	 * </ul>
+	 *
+	 * @return the string representation of this path
+	 */
+	@Override
+	public String toString() {
+		return recompose();
+	}
+
+	/**
+	 * Compares this {@code IRIPath} to another object for structural equality.
+	 * <p>
+	 * Paths are considered equal if and only if:
+	 * </p>
+	 * <ul>
+	 *   <li>the other object is also an {@code IRIPath}, and</li>
+	 *   <li>their canonical segment lists are equal (same size, same elements in order).</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * Because {@link IRIPath} uses a unique internal encoding for each textual
+	 * path (see class Javadoc), equality on {@code segments} implies equality
+	 * of the recomposed textual path as well (via {@link #recompose()}).
+	 * </p>
+	 *
+	 * @param other the object to compare to
+	 * @return {@code true} if {@code other} is an {@code IRIPath} with the same
+	 *         canonical segment list, {@code false} otherwise
+	 */
+	@Override
+	public boolean equals(Object other) {
+		if (this == other) return true;
+		if (other == null || getClass() != other.getClass()) return false;
+		IRIPath that = (IRIPath) other;
+		return Objects.equals(this.segments, that.segments);
+	}
+
+	/**
+	 * Computes a hash code consistent with {@link #equals(Object)}.
+	 * <p>
+	 * The hash code is derived solely from the canonical segment list, so that
+	 * two {@code IRIPath} instances that are equal (same segments in the same
+	 * order) will always have the same hash code. This makes {@code IRIPath}
+	 * safe to use as a key in hash-based collections if needed.
+	 * </p>
+	 *
+	 * @return a hash code for this path
+	 */
+	@Override
+	public int hashCode() {
+		return Objects.hash(segments);
+	}
 
 	// =================================================================================================================
 	// GETTERS
 	// =================================================================================================================
 
-
+	/**
+	 * Returns {@code true} if this path is rooted (i.e. its textual form
+	 * starts with {@code "/"}).
+	 * <p>
+	 * With the internal canonical encoding:
+	 * </p>
+	 * <ul>
+	 *   <li>rooted paths have at least two segments and the first one is empty:
+	 *     <ul>
+	 *       <li>{@code "/"}       → {@code ["", ""]}</li>
+	 *       <li>{@code "/a/b"}    → {@code ["", "a", "b"]}</li>
+	 *     </ul>
+	 *   </li>
+	 *   <li>the empty path is encoded as {@code [""]} and is <strong>not</strong> rooted.</li>
+	 * </ul>
+	 *
+	 * @return {@code true} if the path is rooted, {@code false} otherwise
+	 */
     boolean isRooted() {
-    	return this.rooted;
+    	return this.segments.size() >= 2 && this.segments.get(0).equals(EMPTY_SEGMENT) ;
     }
 
-	boolean isEmpty() {
-		return this.segments.isEmpty();
+	/**
+	 * Returns {@code true} if this path is the empty path.
+	 * <p>
+	 * In the internal canonical encoding, the empty path is represented as
+	 * a single empty segment:
+	 * </p>
+	 * <ul>
+	 *   <li>empty path {@code ""} → {@code [""]}</li>
+	 * </ul>
+	 * <p>
+	 * This is distinct from the root path {@code "/"},
+	 * which is encoded as {@code ["", ""]} and for which {@link #isRooted()}
+	 * returns {@code true} while this method returns {@code false}.
+	 * </p>
+	 *
+	 * @return {@code true} if this path is empty, {@code false} otherwise
+	 */
+	boolean isEmptyPath() {
+		return this.segments.size() == 1 && this.segments.get(0).equals(EMPTY_SEGMENT);
 	}
 
+	/**
+	 * Returns {@code true} if the given segment list represents the empty path
+	 * in the internal canonical encoding.
+	 * <p>
+	 * By convention, the empty path is encoded as a single empty segment:
+	 * </p>
+	 * <ul>
+	 *   <li>empty path {@code ""} → {@code [""]}</li>
+	 * </ul>
+	 * <p>
+	 * This helper does not check for {@code null} and assumes that
+	 * {@code segments} follows the same invariants as {@link IRIPath#segments}
+	 * (non-empty list, first segment encodes rootedness/emptiness).
+	 * </p>
+	 *
+	 * @param segments segment list to test
+	 * @return {@code true} if {@code segments} encodes the empty path
+	 */
+	private static boolean isEmptyPath(List<String> segments) {
+		return segments.size() == 1 && segments.get(0).equals(EMPTY_SEGMENT);
+	}
+
+	/**
+	 * Returns an unmodifiable view of the canonical segment list for this path.
+	 * <p>
+	 * The returned list reflects the internal representation used by {@code IRIPath},
+	 * where joining the segments with {@code "/"} yields the textual path and the
+	 * first segment encodes rootedness / emptiness (see class Javadoc).
+	 * </p>
+	 * <p>
+	 * The view itself cannot be modified (any attempt will throw
+	 * {@link UnsupportedOperationException}), but it reflects subsequent mutations
+	 * of this {@code IRIPath}. In other words, the list is a live, read-only view.
+	 * </p>
+	 *
+	 * @return an unmodifiable view of this path's segments
+	 */
     List<String> getSegments() {
-    	return Collections.unmodifiableList(this.segments);	
+		return Collections.unmodifiableList(this.segments);
     }
 
 	// =================================================================================================================
 	// RECOMPOSITION
 	// =================================================================================================================
-    
+
+	/**
+	 * Reconstructs the textual form of this path from its canonical segments.
+	 * <p>
+	 * This is the inverse of the internal encoding: joining all segments with
+	 * {@code "/"} yields exactly the path string as it appears in the IRI:
+	 * </p>
+	 *
+	 * <pre>
+	 *   recompose().equals(String.join("/", segments))
+	 * </pre>
+	 *
+	 * Rootedness and emptiness are already encoded in {@link #segments}
+	 * (see class Javadoc), so no extra {@code "/"} is added or removed here.
+	 *
+	 * @return the string representation of this path
+	 */
     String recompose() {
-    	if (this.rooted) {
-    		return SEGMENT_SEPARATOR + String.join(SEGMENT_SEPARATOR, this.segments);
-    	} else {
-    		return  String.join(SEGMENT_SEPARATOR, this.segments);
-    	}
-    }
-    
+		return  String.join(SEGMENT_SEPARATOR, this.segments);
+	}
+
+	/**
+	 * Appends the textual form of this path to the given {@link StringBuilder}.
+	 * <p>
+	 * This is equivalent in effect to {@link #recompose()}, but writes directly
+	 * into an existing builder to avoid allocating an intermediate string:
+	 * </p>
+	 *
+	 * <pre>
+	 *   StringBuilder sb = new StringBuilder();
+	 *   path.recompose(sb);
+	 *   // sb now contains the path text
+	 * </pre>
+	 *
+	 * The method assumes that {@link #segments} is non-empty (as guaranteed
+	 * by the {@code IRIPath} invariants), writes the first segment as-is,
+	 * then prefixes each subsequent segment with {@code "/"}.
+	 *
+	 * @param builder target {@code StringBuilder} to append to
+	 * @return the same {@code builder}, for call chaining
+	 */
     StringBuilder recompose(StringBuilder builder) {
     	ListIterator<String> iterator = this.segments.listIterator();
-    	if (this.rooted) { 
-    		builder.append(SEGMENT_SEPARATOR);
-    	}
-    	if (iterator.hasNext()) {
-    		builder.append(iterator.next());
-    		while (iterator.hasNext()) {
-    			builder.append(SEGMENT_SEPARATOR).append(iterator.next());
-    		}
-    	}
+		builder.append(iterator.next()); // there is at least one
+		while (iterator.hasNext()) {
+			builder.append(SEGMENT_SEPARATOR).append(iterator.next());
+		}
     	return builder;
     }
 
+	/**
+	 * Computes the length, in characters, of this path's textual representation,
+	 * i.e. of {@link #recompose()}, without actually allocating the string.
+	 * <p>
+	 * This is used internally to compare the cost of different relative forms
+	 * (for example, when deciding whether a relativized path is shorter than the
+	 * original absolute one).
+	 * </p>
+	 *
+	 * @return the character length of {@code recompose()}
+	 */
 	 int recompositionLength() {
-		return recompositionLength(rooted, segments);
+		return recompositionLength(this.segments);
 	 }
 
-	private static int recompositionLength(boolean rooted, List<String> segments) {
-		if (segments.isEmpty()) {
-			return rooted ? 1 : 0; // "/" or ""
-		}
-		int len = rooted ? 1 : 0; // leading "/"
+	/**
+	 * Computes the length, in characters, of the textual path obtained by
+	 * joining {@code segments} with {@code "/"}.
+	 * <p>
+	 * This is the static counterpart of {@link #recompositionLength()} and assumes
+	 * that {@code segments} follows the same invariants as {@link IRIPath#segments}:
+	 * in particular, the list must be non-empty.
+	 * </p>
+	 *
+	 * <p>
+	 * The length is computed as the sum of the segment lengths plus one
+	 * {@code "/"} separator between each pair of consecutive segments:
+	 * </p>
+	 *
+	 * <pre>
+	 *   len = Σ seg.length() + (segments.size() - 1)
+	 * </pre>
+	 *
+	 * @param segments canonical segment list
+	 * @return number of characters in {@code String.join("/", segments)}
+	 * @throws AssertionError if {@code segments} is empty (invariant violation)
+	 */
+	private static int recompositionLength(List<String> segments) {
+		assert !segments.isEmpty() : "IRIPath invariant violated: segments must be non-empty";
+		int len = 0;
 		for (String seg : segments) {
 			len += seg.length();
 		}
 		// separators between segments
-		len += Math.max(0, segments.size() - 1);
-		return len;
+		return len + segments.size() - 1;
 	}
 
 	// =================================================================================================================
 	// RESOLUTION
 	// =================================================================================================================
 
-
-    
-    void resolveEmptyPath(IRIPath other) {
-    	this.segments.clear();
-    	this.rooted = other.rooted;
-		this.segments.addAll(other.segments);
-    }
-
-
-    
-    void resolveNonEmptyPath(IRIPath other, boolean otherHasAuthority) {
-    	//if (!this.getFirst().equals(EMPTY_SEGMENT)) {
-    	if (!this.rooted) {	
-			if (otherHasAuthority && other.segments.isEmpty()) {
-			//if (otherHasAuthority) {
-				//this.addFirst(EMPTY_SEGMENT);
-				this.rooted = true;
-			} else if (! other.segments.isEmpty()){
-				 //return a string consisting of the reference's path component
-			     // appended to all but the last segment of the base URI's path (i.e.,
-			     // excluding any characters after the right-most "/" in the base URI
-			     // path, or excluding the entire base URI path if it does not contain
-			     //any "/" characters).
-				this.rooted = other.rooted;
-				ListIterator<String> it = other.segments.listIterator(other.segments.size() - 1);
-				while (it.hasPrevious()) {
-				    this.segments.addFirst(it.previous());
-				}
-				
+	/**
+	 * Resolves this <em>non-empty</em> reference path against a base path,
+	 * following the merge rule from
+	 * <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.2.3">
+	 * RFC&nbsp;3986, section&nbsp;5.2.3</a>.
+	 * <p>
+	 * This method is used by {@code IRIRef.resolveInPlace} when the reference
+	 * IRI has a non-empty path. It mutates {@code this} path in place.
+	 * Conceptually:
+	 * </p>
+	 *
+	 * <ul>
+	 *   <li>If this path is <strong>not rooted</strong>, it is merged with the
+	 *       base path by taking {@code basePath} <em>without its last segment</em>
+	 *       and then appending the segments of this path. This corresponds to
+	 *       the {@code merge(base.path, ref.path)} step in RFC&nbsp;3986.</li>
+	 *   <li>If the base IRI has an authority component and the resulting path
+	 *       is still not rooted, a leading empty segment is inserted to encode
+	 *       a leading {@code "/"} and obtain an absolute path, as required by
+	 *       the URI rules for hierarchical IRIs with an authority.</li>
+	 *   <li>If this path is already rooted, no merge with {@code basePath}
+	 *       occurs: the path is left untouched, except for the possible
+	 *       insertion of the leading segment mentioned above.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * The operation preserves the canonical encoding of {@link IRIPath}:
+	 * rootedness is encoded via an initial empty segment and the segment list
+	 * remains non-empty.
+	 * </p>
+	 *
+	 * @param basePath         canonical path for the base IRI
+	 * @param baseHasAuthority {@code true} if the base IRI has an authority component
+	 */
+	void resolveNonEmptyPath(IRIPath basePath, boolean baseHasAuthority) {
+		// only merge when ref path is not absolute
+		if (! this.isRooted()) {
+			// prepend base path without its last segment
+			ListIterator<String> it = basePath.segments.listIterator(basePath.segments.size() - 1);
+			while (it.hasPrevious()) {
+				this.segments.addFirst(it.previous());
 			}
 		}
-    	
-    }
-
+		// If base has authority and we *still* don't start with "/",
+		// add a leading "" segment to get a rooted path.
+		if (baseHasAuthority && ! this.isRooted()) {
+			this.segments.addFirst(EMPTY_SEGMENT);
+		}
+	}
 
 	// =================================================================================================================
 	// RELATIVISATION
 	// =================================================================================================================
 
-
+	/**
+	 * Computes a relative path for this path with respect to {@code basePath},
+	 * if such a relative representation is useful.
+	 * <p>
+	 * Intuitively, relativization answers the question:
+	 * <em>“Given a base IRI and a target IRI, how can I write the target as a
+	 * relative reference from the base, so that resolving it against the base
+	 * recovers the original target?”</em>
+	 * <br/>
+	 * At the path level, this method tries to build a relative path {@code R}
+	 * such that:
+	 * <pre>
+	 *   resolve(R, basePath) ≡ this
+	 * </pre>
+	 * and such that {@code R} is “reasonably short” compared to the original path.
+	 *
+	 * <h2>Compatibility of rootedness</h2>
+	 * Not every pair of paths admits a meaningful relative form. Before doing
+	 * any work, we apply two simple rules:
+	 * <ul>
+	 *   <li>If this path is rooted (starts with {@code "/"}) and {@code basePath}
+	 *       is not rooted, then {@code basePath} cannot serve as a container for
+	 *       this path. In that case, this method returns {@code this} unchanged
+	 *       at the path level (caller will typically keep an absolute IRI).</li>
+	 *   <li>If this path is not rooted and {@code basePath} is rooted, there is
+	 *       no sensible relative representation, and the method returns
+	 *       {@code null} to signal “no path relativization available”.</li>
+	 * </ul>
+	 *
+	 * <h2>Algorithm (high level)</h2>
+	 * Once rootedness is compatible:
+	 * <ol>
+	 *   <li>We compute the length (in segments) of the common prefix between
+	 *       {@code this.segments} and {@code basePath.segments}.</li>
+	 *   <li>We build an “erasing part” consisting of zero or more {@code ".."}
+	 *       segments, which conceptually climbs from the base path up to the
+	 *       common ancestor ({@link #buildWithErasingPart(int, int)}).</li>
+	 *   <li>We adjust this erasing part in {@link #joinResultList} for special
+	 *       cases: identical paths, one strictly containing the other, or the
+	 *       need to preserve/avoid a trailing slash.</li>
+	 *   <li>We append the remaining suffix of this path (the part after the
+	 *       common prefix) to obtain a candidate relative path.</li>
+	 *   <li>We clean up useless trailing slashes such as {@code "./"} or
+	 *       {@code "../"} via {@link #removeUselessTrailingSlash}.</li>
+	 *   <li>If {@code mustFindPath} is {@code true} and the result would be the
+	 *       empty path (canonically {@code [""]}), we turn it into a minimal
+	 *       non-empty relative path that still resolves to the same location
+	 *       ({@link #makeNonEmpty(List, java.util.LinkedList)}).</li>
+	 *   <li>Finally, {@link #selectBestRelativizedPath(LinkedList, int)} compares
+	 *       the cost of this candidate relative path with the original path and
+	 *       either keeps the relativized form, returns {@code this}, or returns
+	 *       {@code null} depending on {@code maxCost} and rootedness.</li>
+	 * </ol>
+	 *
+	 * <h2>{@code mustFindPath} and {@code maxCost}</h2>
+	 * <ul>
+	 *   <li>{@code mustFindPath}:
+	 *     <ul>
+	 *       <li>If {@code false}, the method is allowed to return an empty path
+	 *           (meaning “no path component”) when that still resolves correctly.</li>
+	 *       <li>If {@code true}, the result must not be the empty path; in
+	 *           ambiguous cases, a minimal non-empty relative path is constructed
+	 *           instead (e.g. {@code "."} or the last segment of the base).</li>
+	 *     </ul>
+	 *   </li>
+	 *   <li>{@code maxCost}:
+	 *     <ul>
+	 *       <li>Represents how many extra characters you are willing to “pay”
+	 *           to obtain a relative path instead of keeping the original one.</li>
+	 *       <li>If the relativized path would be too long compared to the
+	 *           original, {@link #selectBestRelativizedPath(LinkedList, int)}
+	 *           either returns {@code this} (for rooted paths) or {@code null}
+	 *           (for non-rooted paths), so that callers can fall back to an
+	 *           absolute form or to another base IRI.</li>
+	 *     </ul>
+	 *   </li>
+	 * </ul>
+	 *
+	 * @param basePath     the base path against which this path is relativized
+	 * @param mustFindPath if {@code true}, forces the result to be a non-empty
+	 *                     path that still resolves back to the same location
+	 * @param maxCost      maximum tolerated overhead (in characters) for the
+	 *                     relativized path compared to the original
+	 * @return a new {@code IRIPath} representing a relative form of this path,
+	 *         {@code this} if keeping the original rooted path is preferable,
+	 *         or {@code null} if no useful relative representation can be found
+	 *         under the given constraints
+	 */
 	public IRIPath relativize(IRIPath basePath, boolean mustFindPath, int maxCost) {
-
 
 		if (this.isRooted() && !basePath.isRooted())
 			return this;
@@ -197,104 +643,34 @@ public final class IRIPath {
 		if (!this.isRooted() && basePath.isRooted())
 			return null;
 
-		// Now here are sure that they are both rootedResult or both unrooted
-
 		int commonLength = computeCommonLength(this.segments, basePath.segments);
-		int baseRestLength = basePath.segments.size() - commonLength;
-		boolean rootedResult = false;
+		List<String> thisRest = this.segments.subList(commonLength, this.segments.size());
 
-		// Building the ERASINGPART: enough ".." to erase non common suffix of base
-		LinkedList<String> resultList = new LinkedList<>();
-		for (int i = 0; i < baseRestLength - 1; i++) {
-			resultList.add("..");
+		LinkedList<String> resultList = buildWithErasingPart(commonLength, basePath.segments.size());
+
+		joinResultList(resultList, thisRest, basePath.segments, commonLength);
+		resultList.addAll(thisRest);
+
+		removeUselessTrailingSlash(resultList);
+
+		if (mustFindPath && isEmptyPath(resultList)) {
+			makeNonEmpty(resultList, basePath.segments);
 		}
-
-		// Handling the special cases
-		if (basePath.segments.size() == commonLength && this.segments.size() > commonLength) {
-			if (commonLength > 0) {
-				resultList.add(basePath.segments.getLast());
-			} else {
-				rootedResult = this.isRooted();
-			}
-		} else if (this.segments.size() == commonLength && basePath.segments.size() > commonLength) {
-			if (commonLength > 0) {
-				resultList.add("..");
-				resultList.add(basePath.segments.get(commonLength - 1));
-			} else{
-				resultList.add("..");
-			}
-		}
-
-		// Adding the REMAININGPART: segments of this that are not in common
-		for (int i = commonLength; i < this.segments.size(); i++) {
-			resultList.add(this.segments.get(i));
-		}
-
-
-		// Fix for the base: /foo  this: /  mistake
-		boolean effectivelyEmpty =
-				resultList.isEmpty()
-						|| (resultList.size() == 1 && resultList.getFirst().equals(EMPTY_SEGMENT));
-
-		// If both are rooted, paths differ, and the candidate is effectively empty,
-		// an empty relative path ("") would resolve back to the base path, not the target.
-		// In this situation, use a rooted empty path ("/") instead.
-		/*
-		if (this.rooted && basePath.rooted && effectivelyEmpty
-				&& !this.segments.equals(basePath.segments)) {
-
-			rootedResult = true;
-			resultList.clear();   // rooted=true + segments=[] ⇒ path "/"
-		}
-
-		 */
-
-		// Handling the special case when we found an empty result (or [""]), but we are not allowed to
-		if (!rootedResult && mustFindPath) {
-			if (effectivelyEmpty) {
-				// If target path itself is empty, there is no non-empty relative path
-				// that keeps the same path and avoids query inheritance.
-				if (this.segments.isEmpty()) {
-					return null;
-				}
-
-				// Paths are identical but mustFindPath == true.
-				// We need a non-empty relative path that resolves to the same location.
-
-				String lastTargetSeg = this.segments.get(this.segments.size() - 1);
-
-				resultList.clear();
-				if (lastTargetSeg.equals(EMPTY_SEGMENT)) {
-					// Target ends with "/", use "." so that merge+dot-removal yields same path
-					resultList.add(DOT_SEGMENT);      // "."
-				} else {
-					// No trailing "/", use last segment (e.g. "b" in "/a/b")
-					resultList.add(lastTargetSeg);
-				}
-			}
-		}
-
-		return this.selectBestRelativizedPath(rootedResult, resultList, maxCost);
+		return this.selectBestRelativizedPath(resultList, maxCost);
 	}
 
-	private IRIPath selectBestRelativizedPath(boolean rootedResult, LinkedList<String> resultList, int maxCost) {
-		int newLen = recompositionLength(rootedResult, resultList);
-		int oldLen = this.recompositionLength();
-		if (this.rooted) {
-			System.out.println("A");
-			System.out.println(oldLen);
-			System.out.println(newLen);
-			if (oldLen <= newLen) {
-				return new IRIPath(this);
-			}
-		} else {
-			if (oldLen + maxCost <= newLen) {
-				return null;
-			}
-		}
-		return new IRIPath(rootedResult, resultList);
-	}
-
+	/**
+	 * Computes the length (in segments) of the common prefix between two
+	 * canonical segment lists.
+	 * <p>
+	 * More formally, this returns the largest {@code i} such that for all
+	 * {@code 0 <= k < i}, {@code a.get(k).equals(b.get(k))}. The result is in
+	 * the range {@code [0, min(a.size(), b.size())]}.
+	 *
+	 * @param a first segment list
+	 * @param b second segment list
+	 * @return number of leading segments shared by both lists
+	 */
 	private static int computeCommonLength(List<String> a, List<String> b) {
 		int len = Math.min(a.size(), b.size());
 		int i = 0;
@@ -304,61 +680,441 @@ public final class IRIPath {
 		return i;
 	}
 
+	/**
+	 * Builds the initial “erasing part” of a relative path, consisting of
+	 * zero or more {@code ".."} segments.
+	 * <p>
+	 * Given:
+	 * <ul>
+	 *   <li>{@code commonLength}: number of leading segments shared by the
+	 *       target path and the base path,</li>
+	 *   <li>{@code baseLength}: total number of segments in the base path,</li>
+	 * </ul>
+	 * the remaining suffix of the base has length:
+	 * <pre>
+	 *   baseRestLength = baseLength - commonLength
+	 * </pre>
+	 * To construct a relative path from the base to the target, we conceptually
+	 * want to:
+	 * <ul>
+	 *   <li>“climb up” from the end of {@code base} back to the common prefix,</li>
+	 *   <li>then descend along the suffix of the target.</li>
+	 * </ul>
+	 *
+	 * This method encodes the “climb up” part as {@code baseRestLength - 1}
+	 * repetitions of {@code ".."}:
+	 * <ul>
+	 *   <li>If {@code baseRestLength <= 1}, no {@code ".."} is needed and the
+	 *       returned list is empty.</li>
+	 *   <li>If {@code baseRestLength > 1}, each {@code ".."} removes one segment
+	 *       of the base beyond the last common segment when resolving.</li>
+	 * </ul>
+	 *
+	 * @param commonLength number of common leading segments between base and target
+	 * @param baseLength   total number of segments in the base path
+	 * @return a new {@link LinkedList} initialized with zero or more {@code ".."} segments
+	 */
+	private static LinkedList<String> buildWithErasingPart(int commonLength, int baseLength) {
+		int baseRestLength = baseLength - commonLength;
+		LinkedList<String> resultList = new LinkedList<>();
+		for (int i = 0; i < baseRestLength - 1; i++) {
+			resultList.add(DOUBLEDOT_SEGMENT);
+		}
+		return resultList;
+	}
+
+	/**
+	 * Adjusts the initial "erasing part" of a relative path (the {@code ".."}
+	 * chain in {@code result}) with a few special cases, before appending the
+	 * remaining suffix of the target path.
+	 * <p>
+	 * Parameters:
+	 * <ul>
+	 *   <li>{@code result} – current prefix of the candidate relative path
+	 *       (already initialized by {@link #buildWithErasingPart(int, int)});</li>
+	 *   <li>{@code rest} – the suffix of this path after the common prefix
+	 *       with {@code base}: {@code this.segments.subList(common, this.size)};</li>
+	 *   <li>{@code base} – the full segment list of the base path;</li>
+	 *   <li>{@code common} – length of the common prefix between this path
+	 *       and the base path.</li>
+	 * </ul>
+	 *
+	 * <p>This method tweaks {@code result} in four situations:
+	 * <ol>
+	 *   <li><b>Identical paths</b>:
+	 *     <pre>{@code
+	 *     rest.isEmpty() && base.size() == common
+	 *     }</pre>
+	 *     In this case, both paths are the same. A purely structural relative
+	 *     path would be empty, which we encode as a single empty segment
+	 *     ({@code [""]}) to match the canonical representation of the empty path.
+	 *   </li>
+	 *
+	 *   <li><b>Target is strictly above the base</b> (shorter path):
+	 *     <pre>{@code
+	 *     rest.isEmpty() && base.size() > common
+	 *     }</pre>
+	 *     Here, the target path is a prefix of the base path. The erasing part
+	 *     (already in {@code result}) climbs up from the base, and we then append
+	 *     {@code ".."} plus the last common segment of the base. This yields
+	 *     a relative form like {@code "../b"} rather than an empty or confusing
+	 *     sequence of {@code ".."} only.
+	 *   </li>
+	 *
+	 *   <li><b>Base is a strict prefix of the target</b>:
+	 *     <pre>{@code
+	 *     base.size() == common && !base.get(common - 1).equals("")
+	 *     }</pre>
+	 *     Here, the base path is a prefix of the target, and the last common
+	 *     segment is not the empty root segment. We start the relative path with
+	 *     that last common segment (e.g. {@code "c/d/e"} instead of
+	 *     {@code "../c/d/e"}), which is shorter and more readable while still
+	 *     resolving correctly.
+	 *   </li>
+	 *
+	 *   <li><b>Root-like {@code rest} without an erasing part</b>:
+	 *     <pre>{@code
+	 *     result.isEmpty() && !rest.isEmpty() && rest.get(0).equals("")
+	 *     }</pre>
+	 *     If no {@code ".."} were needed and the remaining suffix {@code rest}
+	 *     would start with an empty segment, directly using {@code rest} would
+	 *     encode a rooted path (starting with {@code "/"}), which would ignore
+	 *     the base path on resolution. To avoid that, we prefix the relative
+	 *     path with {@code "."} so that patterns like {@code ".//b/"} are used
+	 *     instead of {@code "//b/"} and still resolve back to the same target.
+	 *   </li>
+	 * </ol>
+	 *
+	 * After this adjustment, the caller appends {@code rest} to {@code result}
+	 * to obtain the full candidate relative path.
+	 */
+	private void joinResultList(List<String> result, List<String> rest, List<String> base, int common) {
+		if (rest.isEmpty() && base.size() == common) {
+			result.add(EMPTY_SEGMENT);
+
+		} else if (rest.isEmpty()) {
+			result.add(DOUBLEDOT_SEGMENT);
+			result.add(base.get(common-1));
+
+		} else if (base.size() == common && !base.get(common-1).equals(EMPTY_SEGMENT)) {
+			result.add(base.get(common-1));
+
+		} else if (result.isEmpty() && rest.get(0).equals(EMPTY_SEGMENT)) {
+			result.add(DOT_SEGMENT);
+		}
+	}
+
+	/**
+	 * Normalizes away useless trailing slashes in the candidate relative path.
+	 * <p>
+	 * In the internal encoding, a trailing {@code ""} segment means the
+	 * textual path ends with {@code "/"}. For some relative patterns this is
+	 * redundant or misleading:
+	 * <ul>
+	 *   <li>{@code "./"} and {@code "..//"} are textually possible, but
+	 *       semantically equivalent to {@code "."} and {@code ".."} as
+	 *       relative references.</li>
+	 * </ul>
+	 * To keep relative paths as short and conventional as possible, we drop a
+	 * trailing empty segment when it follows a single-dot or double-dot segment:
+	 * <pre>
+	 *   ["."      , ""] → ["."]
+	 *   [".."     , ""] → [".."]
+	 *   ["..", "a", ""] → unchanged ("/a/" is significant)
+	 * </pre>
+	 *
+	 * @param resultList mutable list of segments for the candidate relative path
+	 */
+	private void removeUselessTrailingSlash(LinkedList<String> resultList) {
+		if (resultList.size() > 1 && resultList.getLast().equals(EMPTY_SEGMENT) ) {
+			if (resultList.get(resultList.size() - 2).equals(DOT_SEGMENT)) {
+				resultList.removeLast();
+			}
+			else if (resultList.get(resultList.size() - 2).equals(DOUBLEDOT_SEGMENT)) {
+				resultList.removeLast();
+			}
+		}
+	}
+
+	/**
+	 * Ensures that a candidate relative path is non-empty while still
+	 * resolving back to the same location as the original target.
+	 * <p>
+	 * This helper is used when {@code mustFindPath == true} and the
+	 * relativization logic has produced an "empty" path – i.e. a single
+	 * empty segment {@code [""]}, which encodes {@code ""} as the path.
+	 * In many contexts, an explicitly non-empty relative reference is
+	 * preferred for display or disambiguation.
+	 * <p>
+	 * Policy:
+	 * <ul>
+	 *   <li>If the base path ends with an empty segment (i.e. the base path
+	 *       is rooted and ends with {@code "/"}), we turn the relative path
+	 *       into {@code "."}. This keeps us “at the same directory level”
+	 *       and still resolves to the same location.</li>
+	 *   <li>Otherwise, we replace the first segment with the last segment of
+	 *       the base path. For example, if both base and target are
+	 *       {@code "http:/a/b"}, we use {@code "b"} as a non-empty relative
+	 *       path that still resolves to {@code "http:/a/b"}.</li>
+	 * </ul>
+	 *
+	 * <p>Precondition: {@code resultList} currently encodes the empty path
+	 * as a single-element list, so {@code resultList.set(0, ...)} is always
+	 * valid.
+	 *
+	 * @param resultList mutable segment list for the relative path candidate
+	 * @param basePath   canonical segment list of the base path
+	 */
+	private void makeNonEmpty(List<String> resultList, LinkedList<String> basePath) {
+		if (basePath.getLast().equals(EMPTY_SEGMENT)) {
+			resultList.set(0, DOT_SEGMENT);
+		} else {
+			resultList.set(0, basePath.getLast());
+		}
+	}
+
+	/**
+	 * Chooses between the original path and the candidate relative path,
+	 * based on their textual length and a configurable {@code maxCost}.
+	 * <p>
+	 * At this point, {@code resultList} encodes a candidate relative path
+	 * (as canonical segments), and we need to decide whether it is worth
+	 * using instead of the original {@code this} path.
+	 *
+	 * <h2>Decision rules</h2>
+	 * Let:
+	 * <ul>
+	 *   <li>{@code oldLen} = length of {@code this.recompose()},</li>
+	 *   <li>{@code newLen} = length of the relative candidate obtained from
+	 *       {@code resultList}.</li>
+	 * </ul>
+	 *
+	 * <ul>
+	 *   <li><b>If this path is rooted</b>:
+	 *     <ul>
+	 *       <li>We keep the original path whenever it is shorter or equal:
+	 *           {@code oldLen <= newLen} ⇒ return {@code new IRIPath(this)}.</li>
+	 *       <li>Otherwise we accept the shorter relative candidate.</li>
+	 *     </ul>
+	 *   </li>
+	 *   <li><b>If this path is not rooted</b>:
+	 *     <ul>
+	 *       <li>We interpret {@code maxCost} as the maximum number of extra
+	 *           characters we are willing to pay for a relative form. If
+	 *           {@code newLen >= oldLen + maxCost}, we reject the candidate
+	 *           and return {@code null}, letting the caller keep an absolute
+	 *           or differently-based representation.</li>
+	 *       <li>Otherwise, the relative form is considered acceptable and
+	 *           we return it.</li>
+	 *     </ul>
+	 *   </li>
+	 * </ul>
+	 *
+	 * <p>This asymmetry reflects typical usage: for rooted paths, we only
+	 * switch to a relative form when it is strictly beneficial; for
+	 * non-rooted paths (e.g. when multiple bases are available), we are
+	 * more tolerant but still avoid excessively verbose {@code ../..}
+	 * chains via {@code maxCost}.
+	 *
+	 * @param resultList canonical segment list for the candidate relative path
+	 * @param maxCost    maximum tolerated overhead (in characters) for the
+	 *                   relative path compared to the original, when this
+	 *                   path is non-rooted
+	 * @return a new {@code IRIPath} using either the original path or the
+	 *         relative candidate, or {@code null} if the candidate is deemed
+	 *         too expensive for a non-rooted path
+	 */
+	private IRIPath selectBestRelativizedPath(LinkedList<String> resultList, int maxCost) {
+		int newLen = recompositionLength(resultList);
+		int oldLen = this.recompositionLength();
+		if (this.isRooted()) {
+			if (oldLen <= newLen) {
+				return new IRIPath(this);
+			}
+		} else {
+			if (oldLen + maxCost <= newLen) {
+				return null;
+			}
+		}
+		return new IRIPath(resultList);
+	}
+
 	// =================================================================================================================
 	// NORMALISATION
 	// =================================================================================================================
 
-	protected void removeDotSegments() {
-		if (DEBUG_DOT_SEGMENTS) System.out.printf("Removing dot segments on path \"%s\".\n", this.recompose());
+	/**
+	 * Normalizes this path by removing dot segments, according to
+	 * RFC 3986, section 5.2.4 ("Remove Dot Segments").
+	 * <p>
+	 * The algorithm is applied directly on the canonical segment list.
+	 * For each segment:
+	 * <ul>
+	 *   <li>If the segment is {@code "."}, it is removed or turned into an
+	 *       empty segment at the end (via {@link #removeDottedSegment(ListIterator)}),
+	 *       so that it no longer contributes to the logical path.</li>
+	 *   <li>If the segment is {@code ".."}, the segment itself is removed or
+	 *       turned into an empty trailing segment, and then the previous
+	 *       non-root segment (if any) is erased via
+	 *       {@link #erasePreviousSegment(ListIterator)}.</li>
+	 *   <li>All other segments are left unchanged.</li>
+	 * </ul>
+	 * The net effect matches the standard URL/URI dot-segment removal:
+	 * sequences such as {@code "./"}, {@code "../"}, {@code "a/./b"},
+	 * {@code "a/../b"} are normalized in place, but the overall canonical
+	 * encoding of rooted vs non-rooted paths is preserved.
+	 */
+	void removeDotSegments() {
 		ListIterator<String> iterator = this.segments.listIterator();
-		String current;
-		boolean currentRoot = this.rooted;
-		while(iterator.hasNext()) {
-			current = iterator.next();
-			if (DEBUG_DOT_SEGMENTS) System.out.printf("Examining \"%s\" in %s list %s\n",
-					current, this.rooted ? "rooted" : "unrooted", this.segments);
-			if (current.equals(DOT_SEGMENT)) {
-				if (currentRoot) {
-					if (iterator.hasNext()) {
-						iterator.remove();
-					} else {
-						iterator.set(EMPTY_SEGMENT);
-					}
-				} else {
-					iterator.remove();
-					currentRoot = true;
+		while (iterator.hasNext()) {
+			switch (iterator.next()) {
+				case DOT_SEGMENT -> {
+					removeDottedSegment(iterator);
 				}
-			} else if (current.equals(DOUBLEDOT_SEGMENT)) {
-				if (currentRoot) {
-					if (iterator.hasNext()) {
-						iterator.remove();
-					} else {
-						iterator.set(EMPTY_SEGMENT);
-						iterator.previous();
-					}
-					if (iterator.hasPrevious()) {
-						iterator.previous();
-						iterator.remove();
-					}
-
-				} else {
-
-					iterator.remove();
-					currentRoot = true;
+				case DOUBLEDOT_SEGMENT -> {
+					removeDottedSegment(iterator);
+					erasePreviousSegment(iterator);
 				}
-
-
-
-			} else if (current.equals(EMPTY_SEGMENT) && !this.rooted && iterator.previousIndex() == 0)  {
-				if (DEBUG_DOT_SEGMENTS) System.out.printf("Rare case when the unrooted list is [\"\", ...]\n");
-				this.rooted = true;
-				iterator.remove();
-			} else {
-				currentRoot = true;
+				default -> { }
 			}
-
 		}
 	}
 
+	/**
+	 * Handles the first step of dot / double-dot removal for the current segment.
+	 * <p>
+	 * Precondition: this method is called immediately after {@code iterator.next()}
+	 * has returned either {@code "."} or {@code ".."}. In both cases, the iterator
+	 * is positioned <em>after</em> that segment, and {@link ListIterator#remove()}
+	 * or {@link ListIterator#set(Object)} will affect the last element returned
+	 * by {@code next()}.
+	 *
+	 * <ul>
+	 *   <li>If there is another segment after the current one
+	 *       ({@code iterator.hasNext() == true}), the dotted segment is simply
+	 *       removed. This corresponds to the RFC cases like {@code "/./"} or
+	 *       {@code "/../"} in the middle of the path, where the trailing slash
+	 *       is effectively preserved by the following segment.</li>
+	 *
+	 *   <li>If there is no following segment, the dotted segment occurs at the
+	 *       end of the path. In this case, we rewrite it as an empty segment
+	 *       ({@code ""}) so that the trailing slash is preserved in the canonical
+	 *       encoding, then move the iterator one position back so that subsequent
+	 *       logic (e.g. {@code erasePreviousSegment}) can inspect the preceding
+	 *       segment if needed.</li>
+	 * </ul>
+	 *
+	 * This helper does not erase the previous segment for {@code ".."}; that is
+	 * handled separately by {@link #erasePreviousSegment(ListIterator)}.
+	 */
+	private static void removeDottedSegment(ListIterator<String> iterator) {
+		if (iterator.hasNext()) {
+			iterator.remove();
+		} else {
+			iterator.set(EMPTY_SEGMENT);
+			iterator.previous();
+		}
+	}
 
+	/**
+	 * Normalizes this path in place according to the provided {@link IRINormalizer}.
+	 * <p>
+	 * This method is invoked from {@link IRIRef#normalizeInPlace(IRINormalizer)} and
+	 * performs three possible operations, depending on the normalizer's policy:
+	 * </p>
+	 *
+	 * <ol>
+	 *   <li><b>Empty-path normalization</b><br>
+	 *       If this path is currently the empty path (encoded as {@code [""]}) and
+	 *       {@link IRINormalizer#shouldNormalizeEmptyWithSlash(String, boolean)}
+	 *       returns {@code true} for the given {@code scheme} and
+	 *       {@code authority != null}, then an extra empty segment is appended.
+	 *       In canonical form this turns:
+	 *       <ul>
+	 *         <li>{@code [""]} → {@code ["", ""]}</li>
+	 *       </ul>
+	 *       which corresponds to normalizing an empty path to {@code "/"} when
+	 *       deemed appropriate by the normalizer (typically for hierarchical IRIs
+	 *       with an authority).
+	 *   </li>
+	 *
+	 *   <li><b>Dot-segment removal</b><br>
+	 *       If {@link IRINormalizer#shouldRemoveDotsInPath(String)} returns
+	 *       {@code true}, the RFC&nbsp;3986 dot-segment removal algorithm is
+	 *       applied via {@link #removeDotSegments()}. This eliminates occurrences
+	 *       of {@code "."} and {@code ".."} where possible, while preserving the
+	 *       canonical encoding of rooted vs non-rooted paths.
+	 *   </li>
+	 *
+	 *   <li><b>Per-segment normalization</b><br>
+	 *       Finally, each segment is passed through
+	 *       {@link IRINormalizer#normalizeSegment(String, String)}, which may
+	 *       perform percent-encoding normalization, Unicode NFC, case folding,
+	 *       or any other segment-level transformation configured on the
+	 *       {@code IRINormalizer}.
+	 *   </li>
+	 * </ol>
+	 *
+	 * <p>
+	 * Empty-path normalization (step&nbsp;1) is mutually exclusive with steps&nbsp;2
+	 * and&nbsp;3: if the path is empty and the normalizer chooses to turn it into
+	 * {@code "/"}, no dot-segment removal or per-segment normalization is applied
+	 * beforehand. In all other cases, the dot-segment removal (if enabled) occurs
+	 * before per-segment normalization.
+	 * </p>
+	 *
+	 * @param normalizer the normalization strategy to apply; must not be {@code null}
+	 * @param scheme     the scheme of the enclosing IRI, or {@code null} if unknown
+	 * @param authority  the authority of the enclosing IRI, or {@code null} if none
+	 */
+	void normalizeInPlace(IRINormalizer normalizer, String scheme, IRIAuthority authority) {
+		if (this.isEmptyPath() && normalizer.shouldNormalizeEmptyWithSlash(scheme, authority != null)) {
+			this.segments.add(EMPTY_SEGMENT);
+		} else {
+			if (normalizer.shouldRemoveDotsInPath(scheme)) {
+				this.removeDotSegments();
+			}
+            this.segments.replaceAll(s -> normalizer.normalizeSegment(s, scheme));
+		}
+	}
+
+	/**
+	 * Erases the segment immediately preceding the current position, if appropriate,
+	 * as part of handling a {@code ".."} segment (RFC 3986 §5.2.4).
+	 * <p>
+	 * Precondition: this method is called <em>after</em>
+	 * {@link #removeDottedSegment(ListIterator)} has processed a {@code ".."}:
+	 * <ul>
+	 *   <li>If {@code ".."} was in the middle of the path, it has just been removed,
+	 *       and the iterator is positioned after the segment that followed it.</li>
+	 *   <li>If {@code ".."} was at the end of the path, it has been rewritten as an
+	 *       empty segment {@code ""} and the iterator has been moved back to stand
+	 *       <em>before</em> that empty segment.</li>
+	 * </ul>
+	 *
+	 * This method then:
+	 * <ol>
+	 *   <li>Moves one segment backwards with {@code previous()}, to reach the
+	 *       candidate segment to erase (the one before the original {@code ".."}).</li>
+	 *   <li>Peeks at that segment via {@code next()} and checks its index via
+	 *       {@code previousIndex()}.</li>
+	 *   <li>Removes the segment <strong>unless</strong> it is the leading empty
+	 *       segment at index {@code 0}, which encodes the root {@code "/"} in the
+	 *       canonical representation.</li>
+	 * </ol>
+	 *
+	 * In other words, this removes the "directory" that {@code ".."} should cancel,
+	 * but never erases the root marker {@code ""} at position 0, so paths like
+	 * {@code "/.."} normalize to {@code "/"} rather than to the empty path.
+	 *
+	 * @param iterator list iterator positioned as described above
+	 */
+	private static void erasePreviousSegment(ListIterator<String> iterator) {
+		if (iterator.hasPrevious()) {
+			iterator.previous();
+			if (!iterator.next().equals(EMPTY_SEGMENT) || iterator.previousIndex() != 0) {
+				iterator.remove();
+			}
+		}
+	}
 }

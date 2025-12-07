@@ -5,9 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
+import fr.inria.jfbaget.irirefs.normalizer.ExtendedComposableNormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.RFCNormalizationScheme;
 import org.junit.jupiter.api.Test;
 
 class IRIRefTest {
+
+    private static final boolean DISPLAY = false;
 
     @Test
     void testRecomposition() {
@@ -201,9 +206,8 @@ class IRIRefTest {
                 "//\uD83D\uDE00\uD83D\uDE80.example/\uD83C\uDF0D/\uD83D\uDCBB",
 
                 // Relative IRI with mixed BMP + non-BMP
-                "資料/\uD83D\uDE00/データ/\uD800\uDF48",
+                "資料/\uD83D\uDE00/データ/\uD800\uDF48"
 
-                "http://example.org/ros&eacute;"
         );
         for (String input : inputs) {
             IRIRef iri = new IRIRef(input);
@@ -250,7 +254,7 @@ class IRIRefTest {
         for (List<String> input : inputs) {
             IRIRef iri = new IRIRef(input.get(0));
             String result = iri.resolveInPlace(base).recompose();
-            assertEquals(result, input.get(1));
+            assertEquals(input.get(1), result);
         }
     }
 
@@ -273,6 +277,7 @@ class IRIRefTest {
 
     }
 
+    @Test
     void testResolution2() {
         List<List<String>> inputs = List.of(
                 List.of("http://www.lirmm.fr/me?query", "#bar", "http://www.lirmm.fr/me?query#bar"),
@@ -371,5 +376,158 @@ class IRIRefTest {
         assertEquals("http://a/b/c/g", result);
     }
 
+    @Test
+    void testRelativization() {
+        List<List<String>> data = List.of(
+                List.of("http:", "http:"),
+                List.of("http:/", "http:/"),
+                List.of("http:a", "http:a"),
+                List.of("http:/a", "http:/a"),
+                List.of("http:a/", "http:a/"),
+                List.of("http:/a/", "http:/a/"),
+
+                List.of("http:", "http:"),
+                List.of("http:/", "http:/"),
+                List.of("http:/", "http:"),
+                List.of("http:", "http:/"),
+
+                List.of("http:/a", "http:/a"),
+                List.of("http:a", "http:a"),
+                List.of("http:/a", "http:/"),
+                List.of("http:/", "http:/a"),
+
+
+
+                List.of("http:/a/", "http:/"),
+                List.of("http:a/b/c/",       "http:a/b/c/d/e/f"),
+                List.of("http:a/b/c",       "http:a/b/c/d/e/f"),
+                List.of("http:a/b/c/d/e/f", "http:a/b/c"),
+                List.of("http:a/b/c/d/e/f", "http:a/b/c/g/h/i"),
+                List.of("http:a/b/c",       "http:a/b"),
+                List.of("http:/a/b",        "http:/a/b"),
+                List.of("http:/a/b/",        "http:/a/b/"),
+                List.of("http:/a/b/",        "http:/a/b"),
+                List.of("http:/a/b?q=x",    "http:/a/b?q=x"),
+                List.of("http:/a/b?q=x",    "http:/a/b#frag"),
+                List.of("http:/a/b/?q=x",    "http:/a/b/#frag"),
+                List.of("http:?q=x",    "http:#frag"),
+                List.of("http:/a/b?q=x",    "http:/a/b"),
+                List.of("http:?q",          "http:#f"),
+                List.of("http://a/b",       "https://a/b"),
+
+                List.of("http://a.example.com/path/x", "http://b.example.com/path/y"),
+
+                List.of("http:a/b/c?q=x",    "http:a/b/c"),
+                List.of("http:a?q=x",    "http:a"),
+                List.of("http://host/a/b?q=x",    "http://host/a/b"),
+                List.of("http://host/a/b/?q=x",    "http://host/a/b"),
+                List.of("http:?q=x",    "http:"),
+                List.of("http:/a/b?q=x", "http:/a/b?q=y"),
+                List.of("http:a/b?q=x",  "http:a/b?q=y"),
+
+                List.of("http:a/b?q=x", "http:a/b"),
+                List.of("http:a/b?q=x", "http:a/b/"),
+                List.of("http:a/b/?q=x", "http:a/b"),
+                List.of("http:?q=x", "http:"),
+                List.of("http:/?q=x", "http:"),
+                List.of("http:q=x", "http:/"),
+
+                List.of("http:/a/b/c/d/e/f",  "http:/g"),
+                List.of("http:/a/b/c/d/e/f",  "http:/a/g"),
+
+                List.of("http:a/b/c/d/e/f/g/h/i",  "http:a"),
+
+                List.of("http://example.org/rosé;" ,  "http://example.org/"),
+
+                List.of("http://host/a", "http://host/"),
+                List.of("http://host/a/b", "http://host/a/"),
+                List.of("http://host/a/b",  "http://host/a//b/"),
+                List.of("veryverylongscheme:a/b/c/d/e", "veryverylongscheme:a//b/"),
+
+                List.of("http://host/",  "http://host/"),
+
+                List.of("http:?q", "http:#f"),
+
+                List.of("http:a", "http:a/b")
+        );
+        for (int index = 0; index < data.size(); index++) {
+            IRIRef iribase   = new IRIRef(data.get(index).get(0));
+            IRIRef iritarget = new IRIRef(data.get(index).get(1));
+
+            IRIRef relativized = iritarget.relativize(iribase);
+            String relStr      = relativized.recompose();
+            IRIRef resolved    = relativized.resolve(iribase);
+            String resStr      = resolved.recompose();
+
+            assertEquals(iritarget, resStr);
+            assertTrue(relativized.recompose().length() <= iritarget.recompose().length());
+
+            if (DISPLAY) {
+                System.out.println("=====================\nTest " + index + "\n\"=====================");
+                System.out.println("Base      : " + iribase);
+                System.out.println("Target    : " + iritarget);
+                System.out.println("Relative  : " + relStr);
+                System.out.println("Resolved  : " + resStr);
+                if (!resStr.equals(iritarget.recompose())) {
+                    System.out.println("❌ FAILED: resolve(relativize(target, base), base) != target");
+                }
+                System.out.println();
+            }
+
+        }
+    }
+
+    @Test
+    public void testNormalization() {
+        List<List<String>> data = List.of(
+                // 1) Your reference case: userinfo + host + default port + path + dot segments
+                List.of(
+                        "HTTP://%7e%3a%4b%5C@www.lirmm.fr:80/../.",
+                        "http://~%3AK%5C@www.lirmm.fr/"
+                ),
+
+                // 2) Scheme/host case + default port removal, simple path
+                List.of(
+                        "HTTP://ExAmPle.Com:80/path",
+                        "http://example.com/path"
+                ),
+
+                // 3) Userinfo with PCT: unreserved decoded, reserved kept encoded, host lowercased
+                List.of(
+                        "http://UsEr%7e%3a%4b@Example.Com",
+                        "http://UsEr~%3AK@example.com/"
+                ),
+
+                // 4) Path segments with PCT/IPCT: ASCII + UTF-8 decoded
+                List.of(
+                        "http://example.com/%7e/%C3%A9",
+                        "http://example.com/~/é"
+                ),
+
+                // 5) Query + fragment: only %HH uppercased, no PCT/IPCT decoding
+                List.of(
+                        "http://example.com/path?q=%7e%3a#frag%C3%A9%7e",
+                        "http://example.com/path?q=%7E%3A#frag%C3%A9%7E"
+                ),
+
+                // 6) IPCT on invalid UTF-8: keep the percent-encoding as-is
+                List.of(
+                        "http://example.com/%C3%28",
+                        "http://example.com/%C3%28"
+                )
+
+        );
+        IRINormalizer normalizer = new ExtendedComposableNormalizer(
+                RFCNormalizationScheme.SYNTAX,
+                RFCNormalizationScheme.PATH,
+                RFCNormalizationScheme.SCHEME,
+                RFCNormalizationScheme.PCT);
+        for (List<String> pair : data) {
+            IRIRef result = new IRIRef(pair.get(0)).normalize(normalizer);
+            assertEquals(pair.get(1), result.recompose());
+
+        }
+
+    }
 
 }
