@@ -5,11 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
+import fr.inria.jfbaget.irirefs.normalizer.ExtendedComposableNormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.RFCNormalizationScheme;
 import org.junit.jupiter.api.Test;
 
 class IRIRefTest {
 
-    private static final boolean DISPLAY = true;
+    private static final boolean DISPLAY = false;
 
     @Test
     void testRecomposition() {
@@ -470,6 +473,58 @@ class IRIRefTest {
                 }
                 System.out.println();
             }
+
+        }
+    }
+
+    @Test
+    public void testNormalization() {
+        List<List<String>> data = List.of(
+                // 1) Your reference case: userinfo + host + default port + path + dot segments
+                List.of(
+                        "HTTP://%7e%3a%4b%5C@www.lirmm.fr:80/../.",
+                        "http://~%3AK%5C@www.lirmm.fr/"
+                ),
+
+                // 2) Scheme/host case + default port removal, simple path
+                List.of(
+                        "HTTP://ExAmPle.Com:80/path",
+                        "http://example.com/path"
+                ),
+
+                // 3) Userinfo with PCT: unreserved decoded, reserved kept encoded, host lowercased
+                List.of(
+                        "http://UsEr%7e%3a%4b@Example.Com",
+                        "http://UsEr~%3AK@example.com/"
+                ),
+
+                // 4) Path segments with PCT/IPCT: ASCII + UTF-8 decoded
+                List.of(
+                        "http://example.com/%7e/%C3%A9",
+                        "http://example.com/~/é"
+                ),
+
+                // 5) Query + fragment: only %HH uppercased, no PCT/IPCT decoding
+                List.of(
+                        "http://example.com/path?q=%7e%3a#frag%C3%A9%7e",
+                        "http://example.com/path?q=%7E%3A#frag%C3%A9%7E"
+                ),
+
+                // 6) IPCT on invalid UTF-8: keep the percent-encoding as-is
+                List.of(
+                        "http://example.com/%C3%28",
+                        "http://example.com/%C3%28"
+                )
+
+        );
+        IRINormalizer normalizer = new ExtendedComposableNormalizer(
+                RFCNormalizationScheme.SYNTAX,
+                RFCNormalizationScheme.PATH,
+                RFCNormalizationScheme.SCHEME,
+                RFCNormalizationScheme.PCT);
+        for (List<String> pair : data) {
+            IRIRef result = new IRIRef(pair.get(0)).normalize(normalizer);
+            assertEquals(pair.get(1), result.recompose());
 
         }
 

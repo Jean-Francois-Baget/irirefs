@@ -12,6 +12,30 @@ import fr.inria.jfbaget.nanoparse.readers.RepetitionReader;
 import fr.inria.jfbaget.nanoparse.readers.SequenceReader;
 import fr.inria.jfbaget.nanoparse.readers.StringReader;
 
+/**
+ * NanoParse-based parser for IRIs and IRI references as defined in RFC&nbsp;3987.
+ * <p>
+ * This class wires together a set of {@link IReader} instances that implement
+ * the grammar rules for:
+ * </p>
+ * <ul>
+ *   <li>full IRI references ({@link #IRIREF}),</li>
+ *   <li>absolute IRIs ({@link #ABSOLUTE}),</li>
+ *   <li>relative IRI references ({@link #RELATIVE}),</li>
+ *   <li>and related components such as scheme, authority, path, query and fragment.</li>
+ * </ul>
+ * <p>
+ * It is used internally by {@code IRIRef} and related classes to validate and
+ * parse input strings; library users typically do not need to interact with
+ * {@code IRIRefParser} directly, nor with the underlying NanoParse API.
+ * </p>
+ *
+ * <p>
+ * The public constants (such as {@link #IRIREF}, {@link #IRI}, {@link #RELATIVE},
+ * {@link #ABSOLUTE}) expose the rule names that can be passed to
+ * {@link Parser#read(CharSequence, int, String)} to parse specific non-terminals.
+ * </p>
+ */
 public class IRIRefParser extends Parser {
 	
 	private static final String REGEXP__SCHEME = "[a-zA-Z][a-zA-Z0-9+-.]*";
@@ -46,8 +70,7 @@ public class IRIRefParser extends Parser {
 	private static final String REGEXP__IREG_NAME = "([" + CHARS__IUNRESERVED + CHARS__SUB_DELIMS + "]|" +
 			                                        REGEXP__PCT_ENCODED + ")*";
 	
-	//private static final String REGEXP__DEC_OCTET = "[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]";
-	// ERREUR DANS LE STANDARD
+
 	private static final String REGEXP__DEC_OCTET = "2[0-4][0-9]|25[0-5]|1[0-9][0-9]|[1-9][0-9]|[0-9]";
 	
 	private static final String REGEXP__IPV4ADDRESS = "(d)\\.(d)\\.(d)\\.(d)".replaceAll("d", REGEXP__DEC_OCTET);
@@ -68,22 +91,135 @@ public class IRIRefParser extends Parser {
 	
 	private static final String REGEXP__IPV6ADDRESS = PATTERN__IPV6ADDRESS.replaceAll("H", REGEXP__H16)
 			                                                              .replaceAll("L", REGEXP__LS32);
-	
+
+	/**
+	 * Grammar rule name for a full IRI reference, as in RFC&nbsp;3987
+	 * ({@code IRI-reference}).
+	 * <p>
+	 * Can be passed to {@link Parser#read(CharSequence, int, String)} to parse
+	 * an IRI reference that may be either a full IRI (with scheme) or a
+	 * relative reference (without scheme).
+	 * </p>
+	 */
 	public static final String IRIREF = "IRI_Reference";
+
+	/**
+	 * Grammar rule name for a full IRI, as in RFC&nbsp;3987
+	 * ({@code IRI} non-terminal).
+	 * <p>
+	 * Can be used with {@link Parser#read(CharSequence, int, String)} to parse
+	 * an IRI that has a scheme and may include a query and a fragment.
+	 * </p>
+	 */
 	public static final String IRI = "IRI";
+
+	/**
+	 * Grammar rule name for a relative IRI reference, as in RFC&nbsp;3987
+	 * ({@code irelative-ref}).
+	 * <p>
+	 * Can be used with {@link Parser#read(CharSequence, int, String)} to parse
+	 * a reference that has no scheme, but may include a path, a query and
+	 * a fragment.
+	 * </p>
+	 */
 	public static final String RELATIVE = "irelative_ref";
+
+	/**
+	 * Grammar rule name for an absolute IRI without fragment, as in
+	 * RFC&nbsp;3987 ({@code absolute-IRI}).
+	 * <p>
+	 * Can be used with {@link Parser#read(CharSequence, int, String)} to parse
+	 * an IRI that has a scheme and hierarchical part, may include a query,
+	 * but never a fragment.
+	 * </p>
+	 */
 	public static final String ABSOLUTE = "absolute_IRI";
 
+	/**
+	 * Grammar rule name for the {@code scheme} component
+	 * (e.g. {@code "http"}, {@code "mailto"}).
+	 * <p>
+	 * This rule is primarily exposed so that tools or tests can validate
+	 * a candidate scheme in isolation via
+	 * {@link Parser#read(CharSequence, int, String)}.
+	 * </p>
+	 */
 	public static final String SCHEME = "scheme";
+
+	/**
+	 * Grammar rule name for the {@code iuserinfo} (userinfo) component.
+	 * <p>
+	 * This rule is mainly intended for validation of the userinfo part that
+	 * appears before {@code '@'} in the authority, when parsed separately
+	 * from the full IRI.
+	 * </p>
+	 */
 	public static final String USER = "iuserinfo";
+
+	/**
+	 * Grammar rule name for the {@code ihost} (host) component.
+	 * <p>
+	 * This rule recognises host names, IPv4 addresses, IPv6 literals and
+	 * future IP literals as allowed by RFC&nbsp;3987. It is exposed to allow
+	 * validation of a host in isolation when needed.
+	 * </p>
+	 */
 	public static final String HOST = "ihost";
+
+	/**
+	 * Grammar rule name for the {@code iquery} (query) component.
+	 * <p>
+	 * This rule can be used to validate a query string on its own, i.e. the
+	 * part that would appear after {@code '?'} and before an optional fragment.
+	 * </p>
+	 */
 	public static final String QUERY = "iquery";
+
+	/**
+	 * Grammar rule name for the {@code ifragment} (fragment) component.
+	 * <p>
+	 * This rule can be used to validate a fragment in isolation, i.e. the part
+	 * that would appear after {@code '#'} at the end of an IRI reference.
+	 * </p>
+	 */
 	public static final String FRAGMENT = "ifragment";
 
+	/**
+	 * Grammar rule name for the hierarchical part sequence used internally
+	 * to represent {@code ihier-part}.
+	 * <p>
+	 * This is mostly exposed for completeness and for test/validation tools
+	 * that may want to parse or check the hierarchical part separately from
+	 * the rest of the IRI.
+	 * </p>
+	 */
 	public static final String HIERARCHICAL = "_seq_ihier_part";
-	
-	
-	
+
+	/**
+	 * Character class (as a Java regex fragment) for the RFC&nbsp;3986
+	 * {@code unreserved} set:
+	 * {@code ALPHA / DIGIT / "-" / "." / "_" / "~"}.
+	 * <p>
+	 * Exposed primarily so that other components (e.g. validators or
+	 * normalizers) can reuse exactly the same definition of {@code unreserved}
+	 * without re-encoding it by hand.
+	 * </p>
+	 */
+	public static final String UNRESERVED = CHARS__UNRESERVED;
+
+	/**
+	 * Character class (as a Java regex fragment) for the RFC&nbsp;3987
+	 * {@code iunreserved} set, i.e. {@code unreserved} plus {@code ucschar}.
+	 * <p>
+	 * This constant is intended for validation and normalisation logic that
+	 * needs to recognise the full range of Unicode characters allowed
+	 * unescaped in IRIs.
+	 * </p>
+	 */
+	public static final String IUNRESERVED = CHARS__IUNRESERVED;
+
+
+
 	private static List<IReader> readers() {
 		return List.of(
 			new ChoiceReader(IRIREF, List.of(IRI, RELATIVE), false),
@@ -138,9 +274,18 @@ public class IRIRefParser extends Parser {
 			new RegexReader("IPv6address", REGEXP__IPV6ADDRESS, false)
 			);
 	}
-	
 
-	
+
+	/**
+	 * Creates a new {@code IRIRefParser} instance with all IRI-related grammar
+	 * rules pre-registered.
+	 * <p>
+	 * The constructed parser can be used to parse any of the supported rules
+	 * (for example {@link #IRIREF}, {@link #IRI}, {@link #RELATIVE},
+	 * {@link #ABSOLUTE}) via the standard {@link Parser#read(CharSequence, int, String)}
+	 * method from NanoParse.
+	 * </p>
+	 */
 	public IRIRefParser() {
 		super(readers());
 	}

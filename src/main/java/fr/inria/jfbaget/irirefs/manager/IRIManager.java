@@ -1,77 +1,89 @@
 package fr.inria.jfbaget.irirefs.manager;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.NoSuchElementException;
-import java.util.Set;
-
 import fr.inria.jfbaget.irirefs.IRIRef;
-import fr.inria.jfbaget.irirefs.IRIRef.IRITYPE;
-import fr.inria.jfbaget.irirefs.exceptions.IRIParseException;
-import fr.inria.jfbaget.irirefs.manager.formatter.DLGPFormatter;
-import fr.inria.jfbaget.irirefs.manager.formatter.IFormatter;
-//import fr.inria.jfbaget.irirefs.manager.normalizer.BasicNormalizer;
-import fr.inria.jfbaget.irirefs.manager.normalizer.INormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.ExtendedComposableNormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
+import fr.inria.jfbaget.irirefs.normalizer.RFCNormalizationScheme;
+import fr.inria.jfbaget.irirefs.normalizer.StandardComposableNormalizer;
+import fr.inria.jfbaget.irirefs.preparator.StringPreparator;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * An IRIManager
+ * High-level helper for creating, normalizing and relativizing {@link IRIRef} instances.
+ * <p>
+ * {@code IRIManager} centralizes three concerns:
+ * </p>
+ * <ul>
+ *   <li>management of a <em>current base IRI</em>, used to resolve relative
+ *       references as in RFC&nbsp;3986&nbsp;§5;</li>
+ *   <li>management of a set of <em>named prefixes</em> (symbolic base IRIs) that
+ *       can be used to resolve compact forms such as {@code prefix:localName};</li>
+ *   <li>optional integration of a {@link StringPreparator} and an {@link IRINormalizer}
+ *       so that all IRIs created through this manager are consistently prepared,
+ *       resolved and normalized.</li>
+ * </ul>
+ *
+ * <p>
+ * Typical usage is:
+ * </p>
+ * <ol>
+ *   <li>construct an {@code IRIManager} with a base IRI and, optionally, a
+ *       preparator and a normalizer;</li>
+ *   <li>declare a few prefixes via {@link #setPrefix(String, String)} or
+ *       {@link #setPrefix(String, String, String)};</li>
+ *   <li>create IRIs relative to the base or to a prefix using
+ *       {@link #createIRI(String)} or {@link #createIRI(String, String)};</li>
+ *   <li>optionally, compute compact relative forms using
+ *       {@link #relativize(IRIRef)} or {@link #relativizeBest(IRIRef)}.</li>
+ * </ol>
+ *
+ * <p>
+ * The manager itself is lightweight and stateful (it tracks the current base and
+ * prefix map). It does not perform any caching: every call to {@code createIRI}
+ * parses, resolves and normalizes afresh.
+ * </p>
  */
-public class IRIManager implements IManager{
-	
-	/**
-	 * Represents a prefix-IRI pair used for resolution or registration.
-	 * <p>
-	 * This record bundles a prefix (e.g., {@code "ex"}) with an {@link IRIRef} that is intended
-	 * to be resolved using the IRI base associated with the prefix.
-	 * Commonly used in prefixed notations such as {@code ex:foo}.
-	 * </p>
-	 *
-	 * @param prefix the identifier associated with a base IRI (must be registered in the manager)
-	 * @param iri the relative or absolute {@link IRIRef} to resolve against the prefix base
-	 *
-	 * @see IRIRef
-	 * @see IRIManager#createIRI(PrefixedIRI)
-	 */
-	public static record PrefixedIRI(String prefix, IRIRef iri) {
-		
-		/**
-	     * Constructs a {@code PrefixedIRI} from a string representation of the IRIRef.
-	     * <p>
-	     * This is a convenience constructor that internally parses the {@code iriString}
-	     * into an {@link IRIRef} object.
-	     * </p>
-	     *
-	     * @param prefix the prefix to use (e.g., {@code "ex"})
-	     * @param iriString the string representation of the IRIRef to associate with the prefix
-	     * @throws IRIParseException if the {@code iriString} is not a valid IRIRef
-	     *
-	     * @see IRIRef#IRIRef(String)
-	     */
-		public PrefixedIRI(String prefix, String iri) throws IRIParseException{
-			this(prefix, new IRIRef(iri));
-		}
-	}
-	
-	
-	/**
-	 * The default base IRI used when no explicit base is provided.
-	 * <p>
-	 * This must always be a valid absolute IRI, as per
-	 * <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.1">RFC 3986, Section 5.1</a>.
-	 * </p>
-	 * @see {@link #IRIManager()} 
-	 * Need to modify the javadoc there if {@link #DEFAULT_BASE} is modified.
-	 */
-    private static final String DEFAULT_BASE = "http://www.boreal.inria.fr/";
-    
+public class IRIManager {
+
     /**
-     * The base IRI used for resolving relative IRI references.
+     * Immutable pair consisting of an optional prefix key and a (possibly
+     * relative) {@link IRIRef}.
      * <p>
-     * This is always stored as an absolute, normalized {@link IRIRef}.
+     * Instances of this record are returned by {@link #relativizeBest(IRIRef)}:
+     * the {@code prefix} component is either {@code null} (when using the
+     * manager's current base) or the key of a declared prefix, and the
+     * {@code iri} component is the corresponding (absolute or relative) IRI
+     * obtained by relativization.
      * </p>
+     *
+     * <p>
+     * Callers can use this type to reconstruct compact forms such as
+     * {@code "prefix:rel/path"} when {@code prefix} is non-{@code null}, or
+     * simply use {@code iri.recompose()} when no prefix is involved.
+     * </p>
+     *
+     * @param prefix the chosen prefix key, or {@code null} if the manager's base
+     *               IRI was used instead of a named prefix
+     * @param iri    the (possibly relativized) IRI reference
      */
-    private IRIRef base;
-    
+    public record PrefixedIRIRef(String prefix, IRIRef iri) {}
+
+    /**
+     * The default base IRI used when no explicit base is provided.
+     * <p>
+     * This must always be a valid absolute IRI, as per
+     * <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.1">RFC 3986, Section 5.1</a>,
+     * and MUST be already normalized.
+     */
+    private static final String DEFAULT_BASE = "http://www.boreal.inria.fr/";
+
+    private final StringPreparator preparator;
+    private final IRINormalizer normalizer;
+
+    private IRIRef base = new IRIRef(DEFAULT_BASE);
+
     /**
      * A map of declared prefixes to their associated absolute IRIs.
      * <p>
@@ -79,380 +91,477 @@ public class IRIManager implements IManager{
      * All stored {@link IRIRef} values are absolute and normalized.
      * </p>
      */
-    private HashMap<String, IRIRef> prefixes;
-    
-    
-    private INormalizer normalizer;
-    private IFormatter formatter;
-
+    private final Map<String, IRIRef> prefixes = new HashMap<>();
 
     /**
-     * Constructs a new {@code IRIManager} with the given base IRI.
+     * Creates a new {@code IRIManager} with explicit preparation and
+     * normalization strategies and an initial base IRI.
      * <p>
-     * The provided IRI string is parsed as an {@link IRIRef} using the {@link IRITYPE#ABS} rule,
-     * then resolved and normalized based on the manager’s normalization policy.
-     * The result must be an absolute IRI, as required by
-     * <a href="https://datatracker.ietf.org/doc/html/rfc3986#section-5.1">RFC 3986, Section 5.1</a>.
+     * The {@code iriBase} string is:
+     * </p>
+     * <ol>
+     *   <li>optionally transformed by the supplied {@link StringPreparator}
+     *       (if non-{@code null});</li>
+     *   <li>parsed into an {@link IRIRef};</li>
+     *   <li>resolved against the manager's current base
+     *       (initially {@link #DEFAULT_BASE});</li>
+     *   <li>normalized in place using the given {@link IRINormalizer};</li>
+     *   <li>finally checked to be {@linkplain IRIRef#isAbsolute() absolute}.</li>
+     * </ol>
+     * <p>
+     * The resulting absolute, normalized {@link IRIRef} becomes the manager's
+     * base IRI. If, after resolution and normalization, the base is still not
+     * absolute, an {@link IllegalArgumentException} is thrown.
      * </p>
      *
-     * <p>
-     * The internal prefix map is initialized as empty.
-     * </p>
-     *
-     * @param iriString the string representation of the base IRI (must be absolute)
-     * @throws IRIParseException if the input string is not a valid absolute IRI
-     *
-     * @see IRIRef
-     * @see IRITYPE#ABS
+     * @param preparator string preparator applied before parsing, or {@code null}
+     *                   to parse the raw input as-is
+     * @param normalizer normalizer applied to all IRIs created by this manager;
+     *                   must not be {@code null}
+     * @param iriBase    textual base IRI used to initialise this manager; may be
+     *                   absolute or relative, but must yield an absolute IRI
+     *                   after resolution and normalization
+     * @throws IllegalArgumentException if the computed base IRI is not absolute
      */
-    public IRIManager(String iriString) throws IRIParseException{
-    	//this.normalizer = new BasicNormalizer();
-    	this.formatter = new DLGPFormatter();
-        this.base = this.normalizer.normalize(new IRIRef(iriString, IRIRef.IRITYPE.ABS).resolve());
-        this.prefixes = new HashMap<>();
-    }
-
-    /**
-     * Constructs a new {@code IRIManager} using a default base IRI.
-     * <p>
-     * The default base IRI is:
-     * {@code "http://www.boreal.inria.fr/"}.
-     * </p>
-     * This is equivalent to {@code new IRIManager("http://www.integraal.fr/")}.
-     *
-     * @throws IRIParseException if the default base IRI is not a valid absolute IRI
-     *
-     * @see #IRIManager(String)
-     */
-    public IRIManager() throws IRIParseException{
-        this(DEFAULT_BASE);
-    }
-    
-    
-   /**
-    * Normalizes the given {@link IRIRef} according to a strategy defined by the subclass.
-    * <p>
-    * This method <b>must</b> be overridden in concrete subclasses to enforce a consistent normalization policy
-    * across all IRIs managed by this instance. It is called internally when setting the base or creating IRIs.
-    * </p>
-    * <p>
-    * Subclasses may implement standard normalization steps defined in 
-    * <a href="https://tools.ietf.org/html/rfc3986#section-6" target="_blank">RFC 3986, Section 6</a>, such as:
-    * </p>
-    * <ul>
-    *   <li>Lowercasing the scheme and host (if applicable)</li>
-    *   <li>Removing default ports</li>
-    *   <li>Percent-encoding normalization</li>
-    * </ul>
-    *
-    * @param iri the {@link IRIRef} to normalize; the manager ensures it has always been resolved 
-    * (it is thus a full IRI without dot segments)
-    * @return a normalized {@link IRIRef}
-    *
-    * @see IRIRef#resolve()
-    */
-    //protected abstract IRIRef normalize(IRIRef iri);
-    
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void setBase(String iriString) throws IRIParseException, IllegalArgumentException {
-    	this.setNormalizedBase(this.createIRIRef(iriString));
-    }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void setBase(PrefixedIRI prefixedIRI) throws IllegalArgumentException {
-    	this.setNormalizedBase(this.createIRIRef(prefixedIRI));
-    }
-    
-    /**
-     * Resolves and normalizes the given {@link IRIRef}, then sets it as base.
-     * <p>
-     * This method is intended for internal or subclass use. It ensures that
-     * any {@link IRIRef} provided from an external source (e.g., parser) is
-     * first resolved against the current base and normalized, before being used
-     * as the new base IRI.
-     * </p>
-     *
-     * @param iriref the IRIRef to resolve and normalize as base
-     * @throws IllegalArgumentException if the resulting IRI is not absolute
-     *
-     * @see #normalize(IRIRef)
-     * @see #setNormalizedBase(IRIRef)
-     */
-    public void setBase(IRIRef iriref) throws IllegalArgumentException {
-    	this.setNormalizedBase(this.createIRIRef(iriref));
-    }
-    
-    /**
-     * Directly sets the base IRI from a resolved and normalized {@link IRIRef}.
-     * <p>
-     * This method assumes the input has already been processed according to the
-     * manager's resolution and normalization policy. No further transformations
-     * will be applied. It is intended for internal use only.
-     * </p>
-     *
-     * @param iriref a fully resolved and normalized absolute IRIRef
-     * @throws IllegalArgumentException if the IRIRef is not absolute
-     */
-    public void setNormalizedBase(IRIRef iriref) throws IllegalArgumentException {
-    	this.checkAbsolute(iriref);
-        this.base = iriref;
-    }
-    
-    /**
-     * Ensures the given {@link IRIRef} is absolute (i.e., has a scheme and no fragment).
-     *
-     * @param iriref the IRIRef to test
-     * @throws IllegalArgumentException if the IRIRef is not absolute
-     *
-     * @see IRIRef#isAbsolute()
-     */
-    private void checkAbsolute(IRIRef iriref) throws IllegalArgumentException {
-    	if (!iriref.isAbsolute()) {
-    		throw new IllegalArgumentException("A base can only be an absolute IRI, given: \"" + iriref.recompose() + "\"");
-    	}
+    public IRIManager(StringPreparator preparator, IRINormalizer normalizer, String iriBase) {
+        this.preparator = preparator;
+        this.normalizer = normalizer;
+        this.base = requireAbsolute(createIRI(iriBase));
     }
 
     /**
-     * {@inheritDoc}
+     * Convenience constructor using no {@link StringPreparator} and a
+     * {@link StandardComposableNormalizer} configured with
+     * {@link RFCNormalizationScheme#STRING} only.
+     * <p>
+     * This is equivalent to:
+     * </p>
+     * <pre>{@code
+     * new IRIManager(null,
+     *                new StandardComposableNormalizer(RFCNormalizationScheme.STRING),
+     *                iribase);
+     * }</pre>
+     * <p>
+     * With {@link RFCNormalizationScheme#STRING}, the normalizer performs no
+     * transformation at all: the parsed components are preserved as-is
+     * (no case folding, no percent-decoding, no path or scheme-based
+     * normalization). The supplied {@code iribase} is still:
+     * </p>
+     * <ol>
+     *   <li>parsed into an {@link IRIRef},</li>
+     *   <li>resolved against the current base (initially
+     *       {@link #DEFAULT_BASE}), and</li>
+     *   <li>required to be {@linkplain IRIRef#isAbsolute() absolute},</li>
+     * </ol>
+     * <p>
+     * otherwise an {@link IllegalArgumentException} is thrown.
+     * </p>
+     *
+     * @param iribase textual base IRI used to initialise this manager
+     * @throws IllegalArgumentException if the computed base IRI is not absolute
      */
-    @Override
+    public IRIManager(String iribase) {
+        this(null, new StandardComposableNormalizer(RFCNormalizationScheme.STRING), iribase);
+    }
+
+    /**
+     * Returns the current base IRI of this manager, as a string.
+     * <p>
+     * The returned value is the recomposed form of the internally stored
+     * {@link IRIRef} base, which is always an absolute, normalized IRI
+     * according to the {@link IRINormalizer} used at construction time.
+     * </p>
+     *
+     * @return the current base IRI in textual form
+     */
     public String getBase() {
         return this.base.recompose();
-    } 
-    
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void setPrefixed(String key, String iriString) throws IRIParseException, IllegalArgumentException {
-    	this.setNormalizedPrefixed(key, this.createIRIRef(iriString));
-    }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void setPrefixed(String key, PrefixedIRI prefixedIRI) throws IllegalArgumentException {
-    	this.setNormalizedPrefixed(key, this.createIRIRef(prefixedIRI));
-    }
-    
-    /**
-     * Resolves and normalizes the given {@link IRIRef}, then associates it with the provided prefix key.
-     * <p>
-     * This method is intended for internal or subclass use. It ensures that any externally provided {@link IRIRef}
-     * is made compatible with this manager’s normalization and resolution policy before being stored.
-     * </p>
-     *
-     * @param key the prefix key to associate with the resolved and normalized IRIRef
-     * @param iriref a potentially unresolved and preferably unnormalized IRIRef
-     * @throws IllegalArgumentException if the resulting IRIRef is not absolute, or if the key is {@code null}
-     *
-     * @see #createIRIRef(IRIRef)
-     * @see #setNormalizedPrefixed(String, IRIRef)
-     */
-    protected void setPrefixed(String key, IRIRef iriref) throws IllegalArgumentException {
-    	 this.setNormalizedPrefixed(key, this.createIRIRef(iriref));
-    }
-    
-    /**
-     * Associates a fully resolved and normalized {@link IRIRef} with the given prefix key.
-     * <p>
-     * This method is the final step in prefix registration. It expects the provided IRIRef to already be
-     * resolved and normalized according to the manager's policy. The prefix key must not be {@code null},
-     * but it may be empty or contain whitespace.
-     * </p>
-     *
-     * @param key the prefix label to associate
-     * @param iriref the absolute, normalized {@link IRIRef} to associate
-     * @throws IllegalArgumentException if the IRIRef is not absolute, or the prefix key is {@code null}
-     *
-     * @see #checkAbsolute(IRIRef)
-     * @see #setPrefixed(String, IRIRef)
-     */
-    public void setNormalizedPrefixed(String key, IRIRef iriref) throws IllegalArgumentException {
-    	this.checkAbsolute(iriref);
-    	this.checkNullKey(key);
-        this.prefixes.put(key, iriref);
-    }
-    
-    /**
-     * Ensures that the provided prefix key is not {@code null}.
-     * <p>
-     * Used as a defensive check when associating a prefix to an IRIRef.
-     * Keys may be empty or contain whitespace, but must not be {@code null}.
-     * </p>
-     *
-     * @param key the prefix key to check
-     * @throws IllegalArgumentException if {@code key} is {@code null}
-     */
-    private void checkNullKey(String key) throws IllegalArgumentException {
-    	if (key == null) {
-    		throw new IllegalArgumentException("Cannot associate a base IRIRef to a null key.");
-    	}
-    }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public Set<String> getAllPrefixes() {
-        return Collections.unmodifiableSet(this.prefixes.keySet());
-    }
-    
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public String getPrefixed(String key) throws NoSuchElementException {
-        return this.getPrefixedIRIRef(key).recompose();
-    }
-    
-    /**
-     * Retrieves the IRIRef currently associated with a given prefix key.
-     * <p>
-     * This method is used internally to resolve prefixed IRIs or to inspect the environment.
-     * </p>
-     *
-     * @param key the prefix to look up
-     * @return the {@link IRIRef} associated with the prefix
-     * @throws NoSuchElementException if the prefix is not registered in the current environment
-     *
-     * @see #setPrefixed(String, IRIRef)
-     * @see java.util.NoSuchElementException
-     */
-    private IRIRef getPrefixedIRIRef(String key) throws NoSuchElementException {
-        IRIRef prefixed = this.prefixes.get(key);
-        if (prefixed == null) {
-            throw new NoSuchElementException("No IRIRef is associated with prefix \"" + key + "\" in the current environment.");
-        }
-        else {
-            return prefixed;
-        }
-    }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public String createIRI(String iriString) throws IRIParseException {
-    	return this.createIRIRef(new IRIRef(iriString)).recompose();
-    }
-    
-    /**
-     * Resolves and normalizes a pre-parsed IRIRef against this manager's base and normalization strategy.
-     * <p>
-     * This method is intended for internal or subclass use only. It ensures the provided {@link IRIRef}
-     * is processed in a consistent way with the manager’s configuration before returning its string representation.
-     * </p>
-     * <p>
-     * <b>Warning:</b> Passing an already normalized {@code IRIRef} that was built using
-     * a different normalization strategy may lead to unexpected results. Use with caution.
-     * </p>
-     *
-     * @param iriref the {@link IRIRef} to resolve and normalize
-     * @return the resulting string representation of the normalized IRI
-     */
-    protected String createIRI(IRIRef iriref) {
-    	return this.createIRIRef(iriref).recompose();
-    }
-    
-    /**
-     * Resolves and normalizes the provided IRIRef against the current base.
-     * <p>
-     * This internal method ensures that the returned IRIRef is fully resolved and
-     * conforms to the manager's normalization policy.
-     * </p>
-     *
-     * @param iriref the input IRIRef to be resolved and normalized
-     * @return the resulting normalized, resolved IRIRef
-     */
-    public IRIRef createIRIRef(IRIRef iriref) {
-    	return this.normalizer.normalize(iriref.resolve(this.base));
-    }
-    
-    /**
-     * Parses the given IRI string into an {@link IRIRef}, then resolves and normalizes it.
-     * <p>
-     * This method delegates to {@link #createIRIRef(IRIRef)} to apply the manager's resolution
-     * and normalization strategy using the current base IRI.
-     * </p>
-     *
-     * @param iriString the raw IRIRef string to process
-     * @return a resolved and normalized {@link IRIRef}
-     * @throws IRIParseException if the string does not represent a valid IRIRef
-     */
-    public IRIRef createIRIRef(String iriString) throws IRIParseException {
-    	return this.createIRIRef(new IRIRef(iriString));
-    }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public String createIRI(PrefixedIRI prefixedIRI) throws NoSuchElementException {
-        return this.createIRIRef(prefixedIRI).recompose();
-    }
-    
-    /**
-     * Resolves and normalizes a {@link PrefixedIRI} to produce an internal {@link IRIRef}.
-     * <p>
-     * The prefix must have been previously declared using {@link #setPrefixed(String, String)} or similar.
-     * </p>
-     *
-     * @param prefixedIRI a prefixed IRIRef to resolve and normalize
-     * @return the normalized, fully-resolved IRIRef
-     * @throws NoSuchElementException if the prefix is not declared
-     */
-    public IRIRef createIRIRef(PrefixedIRI prefixedIRI) throws NoSuchElementException {
-        return this.normalizer.normalize(prefixedIRI.iri.resolve(this.getPrefixedIRIRef(prefixedIRI.prefix))); 
-    }
-    
-    
-    
-    private IRIRef relativize(IRIRef iriref) {
-    	return iriref.relativize(this.base);
-    }
-    
-    private IRIRef relativize(IRIRef iriref, String key) {
-    	return iriref.relativize(this.getPrefixedIRIRef(key));
-    }
-    
-    // other names: shortForm, abbreviate
-    public String display(IRIRef iriref) {
-    	if (iriref.isRelative()) {
-    		throw new IllegalArgumentException("Cannot display a relative IRI, given \"" + iriref.recompose() + "\"");
-    	}
-    	String candidate = this.formatter.format(iriref);
-    	String test = this.formatter.format(this.relativize(iriref));
-    	if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
-    		candidate = test;
-    	}
-    	for (String key : this.getAllPrefixes()) {
-    		test = this.formatter.format(new PrefixedIRI(key, this.relativize(iriref, key)));
-    		if (! test.equals(IRIRef.RELATIVIZE_ERROR) && test.length() < candidate.length()) {
-        		candidate = test;
-        	}
-    	}
-    	return candidate;
     }
 
-    public String display(String iriref) {
-        return display(createIRIRef(iriref));
+    /**
+     * Returns the absolute IRI string associated with a declared prefix.
+     * <p>
+     * This is the recomposed form of the {@link IRIRef} stored for the
+     * given {@code prefixKey}, and is always absolute and normalized
+     * according to this manager’s {@link IRINormalizer}.
+     * </p>
+     *
+     * @param prefixKey the logical prefix name (for example {@code "ex"})
+     * @return the corresponding absolute IRI in textual form
+     * @throws IllegalArgumentException if {@code prefixKey} has not been
+     *                                  registered via {@link #setPrefix(String, String)}
+     *                                  or {@link #setPrefix(String, String, String)}
+     */
+    public String getPrefix(String prefixKey) {
+        return this.get(prefixKey).recompose();
     }
-    
-    //public abstract String displayIRI(IRIRef iriref);
-    
-    //public abstract String displayPrefixedIRI(PrefixedIRI prefixedIRI);
-    
 
-   
+    /**
+     * Creates a normalized {@link IRIRef} from a textual IRI or IRI reference,
+     * resolved against this manager’s current base.
+     * <p>
+     * The creation pipeline is:
+     * </p>
+     * <ol>
+     *   <li>optionally prepare {@code iriString} using the configured
+     *       {@link StringPreparator} (if non-{@code null});</li>
+     *   <li>parse the prepared string into an {@link IRIRef};</li>
+     *   <li>resolve it (strictly) against the current {@linkplain #getBase() base}
+     *       via {@link IRIRef#resolveInPlace(IRIRef)}; the base is guaranteed
+     *       to be absolute by {@link #requireAbsolute(IRIRef)};</li>
+     *   <li>normalize the resolved IRI in place using this manager’s
+     *       {@link IRINormalizer}.</li>
+     * </ol>
+     *
+     * @param iriString a textual IRI or IRI reference, possibly relative
+     * @return an absolute, normalized {@link IRIRef} obtained by resolving
+     *         {@code iriString} against the current base
+     * @throws fr.inria.jfbaget.irirefs.exceptions.IRIParseException
+     *         if parsing fails
+     */
+    public IRIRef createIRI(String iriString) {
+        return createIRI(iriString, this.base);
+    }
+
+    /**
+     * Creates a normalized {@link IRIRef} from a textual IRI or IRI reference,
+     * resolved against the IRI associated with a given prefix.
+     * <p>
+     * This behaves like {@link #createIRI(String)}, except that the base IRI
+     * is taken from the prefix mapping:
+     * </p>
+     * <pre>{@code
+     * IRIRef base = get(prefix);
+     * IRIRef result = new IRIRef(iriString, preparator)
+     *                     .resolveInPlace(base)
+     *                     .normalizeInPlace(normalizer);
+     * }</pre>
+     * <p>
+     * All stored prefix IRIs are guaranteed to be absolute, as they are passed
+     * through {@link #requireAbsolute(IRIRef)} when registered.
+     * </p>
+     *
+     * @param prefix    the logical prefix whose absolute IRI will be used as base
+     * @param iriString a textual IRI or IRI reference, possibly relative
+     * @return an absolute, normalized {@link IRIRef} obtained by resolving
+     *         {@code iriString} against the IRI bound to {@code prefix}
+     * @throws IllegalArgumentException if {@code prefix} is unknown
+     * @throws fr.inria.jfbaget.irirefs.exceptions.IRIParseException
+     *         if parsing fails
+     */
+    public IRIRef createIRI(String prefix, String iriString) {
+        return createIRI(iriString, this.get(prefix));
+
+    }
+
+    /**
+     * Internal factory method that prepares, parses, resolves and normalizes
+     * an {@link IRIRef} against the supplied base.
+     * <p>
+     * This method is the common implementation behind the public
+     * {@code createIRI(...)} overloads.
+     * The {@code base} argument is assumed to be an absolute, normalized IRI;
+     * {@link IRIManager} maintains this invariant by calling
+     * {@link #requireAbsolute(IRIRef)} whenever bases or prefixes are set.
+     * </p>
+     *
+     * @param iriString the raw IRI or IRI reference to parse (possibly relative)
+     * @param base      the absolute base IRI to resolve against
+     * @return the resolved and normalized {@link IRIRef}
+     */
+    private IRIRef createIRI(String iriString, IRIRef base) {
+        return new IRIRef(iriString, this.preparator)
+                .resolveInPlace(base)
+                .normalizeInPlace(this.normalizer);
+    }
+
+    /**
+     * Updates this manager’s current base IRI from a textual IRI or IRI reference.
+     * <p>
+     * The supplied {@code iriString} is prepared, parsed, resolved against the
+     * current base (initially {@link #DEFAULT_BASE}), then normalized using this
+     * manager’s {@link IRINormalizer}. The resulting {@link IRIRef} must be
+     * {@linkplain IRIRef#isAbsolute() absolute}, otherwise an
+     * {@link IllegalArgumentException} is thrown.
+     * </p>
+     *
+     * @param iriString textual IRI or IRI reference used to compute the new base
+     * @throws IllegalArgumentException if the computed IRI is not absolute
+     */
+    public void setBase(String iriString) {
+        this.base = requireAbsolute(createIRI(iriString));
+    }
+
+    /**
+     * Updates this manager’s current base IRI using a prefix-based reference.
+     * <p>
+     * The supplied {@code iriString} is prepared, parsed, resolved against the
+     * IRI currently bound to {@code prefix}, then normalized. The result must be
+     * {@linkplain IRIRef#isAbsolute() absolute}, otherwise an
+     * {@link IllegalArgumentException} is thrown.
+     * </p>
+     *
+     * @param prefix    logical prefix whose IRI will be used as base for resolution
+     * @param iriString textual IRI or IRI reference to resolve against that base
+     * @throws IllegalArgumentException if {@code prefix} is unknown or if the
+     *                                  computed base IRI is not absolute
+     */
+    public void setBase(String prefix, String iriString) {
+        this.base = requireAbsolute(createIRI(prefix, iriString));
+    }
+
+    /**
+     * Declares or updates a prefix mapping to an absolute, normalized IRI.
+     * <p>
+     * The supplied {@code iriString} is prepared, parsed, resolved against the
+     * current base, then normalized. The resulting IRI must be
+     * {@linkplain IRIRef#isAbsolute() absolute}; otherwise an
+     * {@link IllegalArgumentException} is thrown. The mapping
+     * {@code prefixKey -> IRI} is then stored (replacing any previous value).
+     * </p>
+     *
+     * @param prefixKey logical prefix to register (for example {@code "ex"})
+     * @param iriString textual IRI or IRI reference whose normalized absolute
+     *                  value will be bound to {@code prefixKey}
+     * @throws IllegalArgumentException if the computed IRI is not absolute
+     */
+    public void setPrefix(String prefixKey, String iriString) {
+        this.prefixes.put(prefixKey, requireAbsolute(createIRI(iriString)));
+    }
+
+    /**
+     * Declares or updates a prefix mapping using a prefix-based base IRI.
+     * <p>
+     * The supplied {@code iriString} is prepared, parsed, resolved against the
+     * IRI bound to {@code prefix}, then normalized. The result must be
+     * {@linkplain IRIRef#isAbsolute() absolute}; otherwise an
+     * {@link IllegalArgumentException} is thrown. The mapping
+     * {@code prefixKey -> IRI} is then stored (replacing any previous value).
+     * </p>
+     *
+     * <p>Example:</p>
+     * <pre>{@code
+     * manager.setPrefix("exBase", "http://example.org/");
+     * manager.setPrefix("foo", "exBase", "v1/");
+     * // "foo" now maps to "http://example.org/v1/"
+     * }</pre>
+     *
+     * @param prefixKey logical prefix to register (the new mapping’s key)
+     * @param prefix    existing prefix whose IRI will serve as base
+     * @param iriString textual IRI or IRI reference to resolve against that base
+     * @throws IllegalArgumentException if {@code prefix} is unknown or if the
+     *                                  computed IRI is not absolute
+     */
+    public void setPrefix(String prefixKey, String prefix, String iriString) {
+        this.prefixes.put(prefixKey, requireAbsolute(createIRI(prefix, iriString)));
+    }
+
+    /**
+     * Relativizes the given IRI against this manager’s current base.
+     * <p>
+     * This is a thin wrapper around {@link IRIRef#relativize(IRIRef)}, using
+     * {@link #base} as the base IRI. The current base is guaranteed by
+     * {@link #requireAbsolute(IRIRef)} to be an <em>absolute</em> IRI in the
+     * RFC&nbsp;3986 sense (has a scheme and no fragment).
+     * </p>
+     *
+     * <p>
+     * The {@code iri} argument must be a <em>full IRI</em>, i.e. it must have
+     * a scheme. If it is only a relative reference (no scheme),
+     * {@link IRIRef#relativize(IRIRef)} will throw an
+     * {@link IllegalArgumentException}, as required by its contract.
+     * </p>
+     *
+     * <p>
+     * The returned {@link IRIRef} is either:
+     * </p>
+     * <ul>
+     *   <li>a shorter relative reference that still resolves back to
+     *       {@code iri} when resolved against the current base, or</li>
+     *   <li>an IRI that is textually identical to {@code iri} when keeping
+     *       the original form is judged preferable by the relativization
+     *       algorithm.</li>
+     * </ul>
+     *
+     * @param iri the (full) IRI to relativize against the current base
+     * @return a relative or unchanged {@link IRIRef} that still denotes
+     *         the same absolute IRI as {@code iri}
+     * @throws IllegalArgumentException if {@code iri} is not a full IRI
+     *                                  (i.e. has no scheme)
+     */
+    public IRIRef relativize(IRIRef iri) {
+        return this.relativize(iri, this.base);
+    }
+
+    /**
+     * Relativizes the given IRI against the IRI bound to a given prefix.
+     * <p>
+     * This behaves like {@link #relativize(IRIRef)}, but uses the absolute
+     * IRI mapped to {@code prefixKey} (via {@link #setPrefix(String, String)}
+     * or {@link #setPrefix(String, String, String)}) as the base.
+     * </p>
+     *
+     * <p>
+     * The {@code iri} argument must be a full IRI (has a scheme). If it is
+     * only a relative reference, the underlying {@link IRIRef#relativize(IRIRef)}
+     * will throw an {@link IllegalArgumentException}.
+     * </p>
+     *
+     * @param prefixKey the logical prefix whose bound IRI is used as base
+     * @param iri       the (full) IRI to relativize against that base
+     * @return a relative or unchanged {@link IRIRef} that still denotes
+     *         the same absolute IRI as {@code iri}
+     * @throws IllegalArgumentException if {@code prefixKey} is unknown or
+     *                                  if {@code iri} is not a full IRI
+     */
+    public IRIRef relativize(String prefixKey, IRIRef iri) {
+        return this.relativize(iri, this.get(prefixKey));
+    }
+
+    /**
+     * Tries to find the “best” relativized form of the given IRI with respect
+     * to the manager's base and all declared prefixes.
+     * <p>
+     * The method proceeds as follows:
+     * </p>
+     * <ol>
+     *   <li>starts from the original {@code iri} as the current best candidate;</li>
+     *   <li>computes {@link #relativize(IRIRef)} against the current base and
+     *       keeps it if its recomposed length is shorter;</li>
+     *   <li>for each declared prefix key, computes
+     *       {@link #relativize(String, IRIRef)} against the corresponding prefix
+     *       IRI and compares the total length {@code prefixKey.length() + relativizedLength}
+     *       to the current best pair;</li>
+     *   <li>returns a {@link PrefixedIRIRef} holding the prefix (possibly
+     *       {@code null} when the base is used) and the chosen {@link IRIRef}.</li>
+     * </ol>
+     *
+     * <h3>Performance considerations</h3>
+     * <p>
+     * This method may be relatively expensive:
+     * for each call, it:
+     * </p>
+     * <ul>
+     *   <li>relativizes against the base IRI,</li>
+     *   <li>relativizes once per declared prefix,</li>
+     *   <li>and recomputes {@link IRIRef#recompositionLength()} several times.</li>
+     * </ul>
+     * <p>
+     * When the same {@code IRIRef} needs to be compacted repeatedly (for example
+     * in a loop or for repeated display), callers are encouraged to compute
+     * {@code relativizeBest} once and cache the resulting {@link PrefixedIRIRef}
+     * instead of invoking this method every time.
+     * </p>
+     *
+     * @param iri the IRI to relativize against the base and all prefixes
+     * @return a {@link PrefixedIRIRef} containing the chosen prefix (possibly
+     *         {@code null}) and relativized IRI
+     */
+    public PrefixedIRIRef relativizeBest(IRIRef iri) {
+        String currentPrefix = null;
+        int currentPrefixLen = 0;
+        IRIRef currentIRIRef = iri;
+        int currentIRIRefLen = currentIRIRef.recompositionLength();
+
+        IRIRef testedIRIRef = this.relativize(iri);
+        int testedIRIRefLen = testedIRIRef.recompositionLength();
+        if (testedIRIRefLen < currentIRIRefLen) {
+            currentIRIRef = testedIRIRef;
+            currentIRIRefLen = testedIRIRefLen;
+        }
+
+        for (String prefixKey : this.prefixes.keySet()) {
+            testedIRIRef = this.relativize(prefixKey, iri);
+            testedIRIRefLen = testedIRIRef.recompositionLength();
+            if (prefixKey.length() + testedIRIRefLen < currentPrefixLen + currentIRIRefLen) {
+                currentPrefix = prefixKey;
+                currentPrefixLen = prefixKey.length();
+                currentIRIRef = testedIRIRef;
+                currentIRIRefLen = testedIRIRefLen;
+            }
+        }
+        return new PrefixedIRIRef(currentPrefix, currentIRIRef);
+    }
+
+    /**
+     * Ensures that the given {@link IRIRef} is absolute.
+     * <p>
+     * This helper is used when setting the manager's base IRI and prefix IRIs:
+     * only absolute IRIs (with a scheme and no fragment) are accepted.
+     * If {@code iri} is not absolute, an {@link IllegalArgumentException}
+     * is thrown.
+     * </p>
+     *
+     * @param iri the IRI to check
+     * @return the same {@code iri}, if it is absolute
+     * @throws IllegalArgumentException if {@code iri} is not absolute
+     */
+    private IRIRef requireAbsolute(IRIRef iri) {
+        if (iri.isAbsolute()) {
+            return iri;
+        } else {
+            throw new IllegalArgumentException("Cannot create a base from a non absolute IRI, given: " +
+                    iri.recompose());
+        }
+    }
+
+    /**
+     * Looks up the {@link IRIRef} associated with the given prefix key.
+     * <p>
+     * This helper reads from the internal {@link #prefixes} map and is used
+     * whenever the manager needs the absolute IRI corresponding to a declared
+     * prefix. If the prefix is unknown, an {@link IllegalArgumentException}
+     * is thrown.
+     * </p>
+     *
+     * @param prefixKey the declared prefix name to resolve
+     * @return the absolute {@link IRIRef} bound to {@code prefixKey}
+     * @throws IllegalArgumentException if no IRI has been declared for {@code prefixKey}
+     */
+    private IRIRef get(String prefixKey) {
+        IRIRef iri = prefixes.get(prefixKey);
+        if (iri == null) {
+            throw new IllegalArgumentException("Unknown prefix: " + prefixKey);
+        } else {
+            return iri;
+        }
+    }
+
+    /**
+     * Internal helper performing relativization against a given base IRI.
+     * <p>
+     * This is a thin wrapper around {@link IRIRef#relativize(IRIRef)}:
+     * it delegates directly to {@code iri.relativize(base)}.
+     * </p>
+     *
+     * <p>
+     * The {@code base} argument is always an absolute IRI (this is enforced
+     * whenever bases and prefixes are set via {@link #requireAbsolute(IRIRef)}).
+     * The {@code iri} argument must be a <em>full IRI</em>, i.e. it must have
+     * a scheme; if it is only a relative reference, the underlying
+     * {@link IRIRef#relativize(IRIRef)} call will throw an
+     * {@link IllegalArgumentException}.
+     * </p>
+     *
+     * @param iri  the (full) IRI to relativize
+     * @param base the absolute base IRI to relativize against
+     * @return the relativized or unchanged {@link IRIRef}, as returned by
+     *         {@link IRIRef#relativize(IRIRef)}
+     * @throws IllegalArgumentException if {@code iri} is not a full IRI
+     *                                  (has no scheme)
+     */
+    private IRIRef relativize(IRIRef iri, IRIRef base) {
+        return iri.relativize(base);
+    }
+
+
+    public static void main(String[] args) {
+        IRINormalizer normalizer = new ExtendedComposableNormalizer(RFCNormalizationScheme.STRING);
+        IRIManager manager = new IRIManager(null, normalizer, "HTTP://www.BOREAL.inria.fr:80/");
+        IRIRef test = manager.createIRI("HTTP://www.BOREAL.inria.fr:80");
+        IRIRef rel = manager.relativize(test);
+        if (rel == null) {System.out.println("NULL");}
+        System.out.println(manager.relativize(test));
+    }
+
 }
