@@ -5,7 +5,7 @@
 
   <groupId>io.github.jean-francois-baget</groupId>
   <artifactId>irirefs</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <packaging>jar</packaging>
 
   <name>IRIRefs</name>

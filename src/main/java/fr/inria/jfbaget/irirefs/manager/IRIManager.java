@@ -293,6 +293,34 @@ public class IRIManager {
     }
 
     /**
+     * Sets the base IRI to the given {@link IRIRef}, bypassing any preparation
+     * or normalization step.
+     * <p>
+     * Unlike {@link #setBase(String)}, this method assumes that {@code base}
+     * has already been constructed (and, if relevant, normalized) by the caller.
+     * The only check performed is that the supplied IRI is
+     * {@linkplain IRIRef#isAbsolute() absolute}; otherwise an
+     * {@link IllegalArgumentException} is thrown.
+     * </p>
+     *
+     * <p>
+     * This method is intended for performance-sensitive code that already
+     * maintains {@link IRIRef} instances and wants to reuse them directly.
+     * It should be used with care: the manager will not apply any additional
+     * normalization or validation beyond the absolute-IRI check, so the caller
+     * is responsible for ensuring that {@code base} is in whatever canonical
+     * form is required by the application.
+     * </p>
+     *
+     * @param base the new base IRI (must be absolute)
+     * @throws IllegalArgumentException if {@code base} is not absolute
+     * @see #setBase(String)
+     */
+    public void setBase(IRIRef base) {
+        this.base = requireAbsolute(base);
+    }
+
+    /**
      * Updates this manager’s current base IRI using a prefix-based reference.
      * <p>
      * The supplied {@code iriString} is prepared, parsed, resolved against the
@@ -355,6 +383,30 @@ public class IRIManager {
     public void setPrefix(String prefixKey, String prefix, String iriString) {
         this.prefixes.put(prefixKey, requireAbsolute(createIRI(prefix, iriString)));
     }
+
+    /**
+     * Declares or updates a prefix mapping using an existing {@link IRIRef},
+     * bypassing any preparation or normalization step.
+     * <p>
+     * This is the {@link IRIRef}-based counterpart of
+     * {@link #setPrefix(String, String)}: it stores {@code base} directly in
+     * the internal prefix map after checking that it is
+     * {@linkplain IRIRef#isAbsolute() absolute}. No additional normalization
+     * is applied.
+     * </p>
+     *
+     * <p>
+     * This method is intended for advanced or performance-sensitive usages
+     * where prefix IRIs are already managed as {@link IRIRef} instances.
+     * Callers must ensure that the supplied IRI is in the desired normalized
+     * form, since the manager will not re-normalize it.
+     * </p>
+     *
+     * @param prefixKey the prefix to associate (for example {@code "ex"})
+     * @param base      the absolute IRI to which this prefix should expand
+     * @throws IllegalArgumentException if {@code base} is not absolute
+     * @see #setPrefix(String, String)
+     */
 
     /**
      * Relativizes the given IRI against this manager’s current base.
