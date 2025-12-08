@@ -42,6 +42,12 @@ Requirements:
 
 ---
 
+## Documentation
+
+The javadoc can be accessed on [javadoc.io](https://javadoc.io/doc/io.github.jean-francois-baget/irirefs/latest/index.html).
+
+---
+
 ## IRIRef – standalone usage
 
 ### Basic parsing and component access
