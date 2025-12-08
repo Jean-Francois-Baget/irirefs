@@ -3,6 +3,7 @@ package fr.inria.jfbaget.irirefs;
 import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
 import fr.inria.jfbaget.nanoparse.matches.ListMatch;
 
+import java.io.IOException;
 import java.util.Objects;
 
 /**
@@ -347,11 +348,15 @@ class IRIAuthority {
 	 * @return the authority as it should appear in an IRI (starting with {@code "//"})
 	 */
 	String recompose() {
-		return this.recompose(new StringBuilder()).toString();
+		try {
+			return this.recompose(new StringBuilder()).toString();
+		} catch (IOException ex) {
+			throw new AssertionError("Unexpected IO Exception with StringBuilder", ex);
+		}
 	}
 
 	/**
-	 * Appends the textual authority component to the given {@link StringBuilder},
+	 * Appends the textual authority component to the given {@link Appendable},
 	 * including the leading {@code "//"}.
 	 * <p>
 	 * This method writes:
@@ -370,7 +375,7 @@ class IRIAuthority {
 	 * @param builder the builder to append to
 	 * @return the same builder instance, for chaining
 	 */
-	StringBuilder recompose(StringBuilder builder) {
+	Appendable recompose(Appendable builder) throws IOException {
 		builder.append(AUTHORITY_SEPARATOR);
 		this.recomposeUser(builder);
 		this.recomposeHost(builder);
@@ -395,7 +400,7 @@ class IRIAuthority {
 	 * @param builder the builder to append to
 	 * @return the same builder instance, for chaining
 	 */
-	StringBuilder recomposeUser(StringBuilder builder) {
+	Appendable recomposeUser(Appendable builder) throws IOException{
 		if (this.user != null) {
 			builder.append(this.user).append(USER_SEPARATOR);
 		}
@@ -418,7 +423,7 @@ class IRIAuthority {
 	 * @param builder the builder to append to
 	 * @return the same builder instance, for chaining
 	 */
-	StringBuilder recomposeHost(StringBuilder builder) {
+	Appendable recomposeHost(Appendable builder) throws IOException {
 		if (this.host != null) { // I don't know if this is necessary
 			builder.append(this.host);
 		}
@@ -442,9 +447,9 @@ class IRIAuthority {
 	 * @param builder the builder to append to
 	 * @return the same builder instance, for chaining
 	 */
-	StringBuilder recomposePort(StringBuilder builder) {
+	Appendable recomposePort(Appendable builder) throws IOException {
 		if (this.port != null) {
-			builder.append(PORT_SEPARATOR).append(this.port);
+			builder.append(PORT_SEPARATOR).append(this.port.toString());
 		}
 		return builder;
 	}

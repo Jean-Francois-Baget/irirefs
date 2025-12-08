@@ -1,5 +1,6 @@
 package fr.inria.jfbaget.irirefs;
 
+import java.io.IOException;
 import java.util.List;
 
 import fr.inria.jfbaget.irirefs.normalizer.ExtendedComposableNormalizer;
@@ -755,12 +756,16 @@ public class IRIRef {
 	 * @return the full string representation of this IRI
 	 */
 	public String recompose() {
-		return this.recompose(new StringBuilder()).toString();
+		try {
+			return this.recompose(new StringBuilder()).toString();
+		} catch (IOException ex) {
+			throw new AssertionError("Unexpected IOException with StringBuilder", ex);
+		}
 	}
 
 	/**
 	 * Appends the string representation of this IRI reference to the given
-	 * {@link StringBuilder}, following the standard IRI recomposition rules from
+	 * {@link Appendable}, following the standard IRI recomposition rules from
 	 * <a href="https://datatracker.ietf.org/doc/html/rfc3987">RFC&nbsp;3987</a>.
 	 * <p>
 	 * The output includes the scheme, authority, path, query, and fragment,
@@ -769,10 +774,10 @@ public class IRIRef {
 	 * which allows efficient concatenation in higher-level code.
 	 * </p>
 	 *
-	 * @param builder the {@link StringBuilder} to append the IRI representation to
-	 * @return the same {@link StringBuilder}, allowing for method chaining
+	 * @param builder the {@link Appendable} to append the IRI representation to
+	 * @return the same {@link Appendable}, allowing for method chaining
 	 */
-	public StringBuilder recompose(StringBuilder builder) {
+	public Appendable recompose(Appendable builder) throws IOException {
 		this.recomposeScheme(builder);
 		if (this.authority != null) {
 			this.authority.recompose(builder);
@@ -786,7 +791,7 @@ public class IRIRef {
 	/**
 	 * Appends the scheme component (followed by {@code ":"}) if present.
 	 */
-	private void recomposeScheme(StringBuilder builder) {
+	private void recomposeScheme(Appendable builder) throws IOException {
 		if (this.scheme != null) {
 			builder.append(this.scheme);
 			builder.append(":");
@@ -796,7 +801,7 @@ public class IRIRef {
 	/**
 	 * Appends the query component (prefixed by {@code "?"}) if present.
 	 */
-	private void recomposeQuery(StringBuilder builder) {
+	private void recomposeQuery(Appendable builder) throws IOException {
 		if (this.query != null) {
 			builder.append("?");
 			builder.append(this.query);
@@ -806,7 +811,7 @@ public class IRIRef {
 	/**
 	 * Appends the fragment component (prefixed by {@code "#"}) if present.
 	 */
-	private void recomposeFragment(StringBuilder builder) {
+	private void recomposeFragment(Appendable builder) throws IOException {
 		if (this.fragment != null) {
 			builder.append("#");
 			builder.append(this.fragment);

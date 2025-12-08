@@ -1,6 +1,7 @@
 package fr.inria.jfbaget.irirefs;
 
 
+import java.io.IOException;
 import java.util.*;
 
 import fr.inria.jfbaget.irirefs.normalizer.IRINormalizer;
@@ -47,14 +48,14 @@ import fr.inria.jfbaget.nanoparse.matches.StringMatch;
  * With this canonical representation, rootedness and emptiness are fully
  * determined by the first segment and the list size; no extra flags are needed.
  * All recomposition methods ({@link #recompose()} and
- * {@link #recompose(StringBuilder)}) operate directly on {@code segments}.
+ * {@link #recompose(Appendable)}) operate directly on {@code segments}.
  * </p>
  *
  * <h2>Operations</h2>
  * This class provides:
  * <ul>
  *   <li>Recomposition of the path into its string form
- *       ({@link #recompose()}, {@link #recompose(StringBuilder)}).</li>
+ *       ({@link #recompose()}, {@link #recompose(Appendable)}).</li>
  *   <li>Dot-segment normalization according to RFC&nbsp;3986
  *       section&nbsp;5.2.4 ({@link #removeDotSegments()}).</li>
  *   <li>Resolution of a relative path against a base path
@@ -414,7 +415,7 @@ final class IRIPath {
 	}
 
 	/**
-	 * Appends the textual form of this path to the given {@link StringBuilder}.
+	 * Appends the textual form of this path to the given {@link Appendable}.
 	 * <p>
 	 * This is equivalent in effect to {@link #recompose()}, but writes directly
 	 * into an existing builder to avoid allocating an intermediate string:
@@ -430,10 +431,10 @@ final class IRIPath {
 	 * by the {@code IRIPath} invariants), writes the first segment as-is,
 	 * then prefixes each subsequent segment with {@code "/"}.
 	 *
-	 * @param builder target {@code StringBuilder} to append to
+	 * @param builder target {@code Appendable} to append to
 	 * @return the same {@code builder}, for call chaining
 	 */
-    StringBuilder recompose(StringBuilder builder) {
+    Appendable recompose(Appendable builder) throws IOException {
     	ListIterator<String> iterator = this.segments.listIterator();
 		builder.append(iterator.next()); // there is at least one
 		while (iterator.hasNext()) {

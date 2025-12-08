@@ -31,7 +31,7 @@ The artifact is published on Maven Central.
 <dependency>
   <groupId>io.github.jean-francois-baget</groupId>
   <artifactId>irirefs</artifactId>
-  <version>0.1.3</version>
+  <version>0.1.4</version>
 </dependency>
 ```
 
