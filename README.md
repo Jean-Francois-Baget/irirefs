@@ -40,7 +40,11 @@ Requirements:
 * Java **17+**
 * No extra configuration is needed beyond the dependency.
 
----
+
+
+## Javadoc
+
+You can find the documentation on [javadoc.io](https://javadoc.io/doc/io.github.jean-francois-baget/irirefs/latest/index.html).
 
 ## IRIRef – standalone usage
 
