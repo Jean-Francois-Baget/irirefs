@@ -7,8 +7,10 @@ import fr.inria.jfbaget.irirefs.normalizer.RFCNormalizationScheme;
 import fr.inria.jfbaget.irirefs.normalizer.StandardComposableNormalizer;
 import fr.inria.jfbaget.irirefs.preparator.StringPreparator;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * High-level helper for creating, normalizing and relativizing {@link IRIRef} instances.
@@ -194,6 +196,38 @@ public class IRIManager {
      */
     public String getPrefix(String prefixKey) {
         return this.get(prefixKey).recompose();
+    }
+
+    /**
+     * Returns an unmodifiable view of all currently declared prefix keys.
+     * <p>
+     * The returned set contains exactly the keys that have been registered via
+     * {@link #setPrefix(String, String)} or {@link #setPrefix(String, String, String)}.
+     * It is a live view over the internal prefix map: subsequent calls to
+     * {@code setPrefix(...)} will be reflected in this set.
+     * </p>
+     *
+     * <p>
+     * The set itself cannot be structurally modified (any attempt to add or remove
+     * elements will throw an {@link UnsupportedOperationException}), but callers
+     * can freely iterate over it:
+     * </p>
+     *
+     * <pre>{@code
+     * for (String key : manager.getAllPrefixes()) {
+     *     // use key ...
+     * }
+     * }</pre>
+     *
+     * <p>
+     * No ordering guarantees are provided: the iteration order is that of the
+     * underlying {@link java.util.HashMap#keySet() HashMap key set}.
+     * </p>
+     *
+     * @return an unmodifiable set view of all declared prefix keys
+     */
+    public Set<String> getAllPrefixes() {
+        return Collections.unmodifiableSet(this.prefixes.keySet());
     }
 
     /**

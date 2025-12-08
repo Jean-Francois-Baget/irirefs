@@ -5,6 +5,13 @@ All notable changes to the **irirefs** library will be documented in this file.
 This project follows the principles of [Keep a Changelog](https://keepachangelog.com/)
 and aims to respect [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2025-12-08
+
+### Added
+- `IRIManager.getAllPrefixes()` to expose an unmodifiable view of all declared prefix keys, making it easy to iterate over all configured prefixes.
+
+
+
 ## [0.1.2] - 2025-12-08
 
 ### Added
