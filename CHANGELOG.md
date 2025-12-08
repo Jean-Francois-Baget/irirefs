@@ -5,6 +5,15 @@ All notable changes to the **irirefs** library will be documented in this file.
 This project follows the principles of [Keep a Changelog](https://keepachangelog.com/)
 and aims to respect [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2025-12-08
+
+### Added
+
+- `IRIManager#setPrefix(String prefixKey, IRIRef base)`  
+  Allows registering or updating a prefix mapping directly from an existing
+  `IRIRef`. As with `setBase(IRIRef)`, no extra normalization is applied,
+  and the method requires an absolute IRI. This is intended for
+  performance-sensitive code that already manages `IRIRef` instances.
 
 
 ## [0.1.1] - 2025-12-08
@@ -16,12 +25,6 @@ and aims to respect [Semantic Versioning](https://semver.org/).
   instance, without re-running preparation or normalization. The method still
   enforces that the supplied IRI is absolute; callers are responsible for
   passing already-normalized bases when desired.
-
-- `IRIManager#setPrefix(String prefixKey, IRIRef base)`  
-  Allows registering or updating a prefix mapping directly from an existing
-  `IRIRef`. As with `setBase(IRIRef)`, no extra normalization is applied,
-  and the method requires an absolute IRI. This is intended for
-  performance-sensitive code that already manages `IRIRef` instances.
 
 ## [0.1.0] - 2025-11-07
 
