@@ -407,6 +407,9 @@ public class IRIManager {
      * @throws IllegalArgumentException if {@code base} is not absolute
      * @see #setPrefix(String, String)
      */
+    public void setPrefix(String prefixKey, IRIRef base) {
+        this.prefixes.put(prefixKey, requireAbsolute(base));
+    }
 
     /**
      * Relativizes the given IRI against this manager’s current base.
